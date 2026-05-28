@@ -1,0 +1,113 @@
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { fetchDailyQueue, resolveWordsByIds, SAMPLE_WORDS, fnv32a, computeSeed, fisherYates } from '../dailyQueue';
+
+const makeSupabase = (token: string | null) => ({
+  auth: {
+    getSession: vi.fn().mockResolvedValue({
+      data: { session: token ? { access_token: token } : null },
+    }),
+  },
+});
+
+const makeSupabaseDb = (rows: any[] | null, error: any = null) => ({
+  from: vi.fn().mockReturnValue({
+    select: vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({ data: rows, error }),
+    }),
+  }),
+});
+
+beforeEach(() => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('순수 함수: fnv32a / computeSeed / fisherYates', () => {
+  it('fnv32a("hello") → 고정 해시값 (Edge Function과 동일)', () => {
+    expect(fnv32a('hello')).toBe(0x4f9f2cab);
+  });
+
+  it('computeSeed — 동일 입력 → 동일 출력 (결정론적)', () => {
+    const userId = '00000000-0000-4000-8000-000000000001';
+    const date = '2026-05-28';
+    expect(computeSeed(userId, date)).toBe(computeSeed(userId, date));
+  });
+
+  it('computeSeed — 다른 날짜 → 다른 seed', () => {
+    const userId = '00000000-0000-4000-8000-000000000001';
+    expect(computeSeed(userId, '2026-05-28')).not.toBe(computeSeed(userId, '2026-05-29'));
+  });
+
+  it('fisherYates — 같은 seed로 동일 배열 → 재현 가능한 순열', () => {
+    const arr = [1, 2, 3, 4, 5];
+    const seed = 42;
+    const shuffle1 = fisherYates(arr, seed);
+    const shuffle2 = fisherYates(arr, seed);
+    expect(shuffle1).toEqual(shuffle2);
+    expect([...shuffle1].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('fetchDailyQueue', () => {
+  it('200 응답 시 word_ids + session_seed 반환', async () => {
+    const payload = {
+      word_ids: ['id-1', 'id-2', 'id-3'],
+      session_seed: 98765,
+      generated_at: '2026-05-28T00:00:00Z',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(payload),
+    }));
+
+    const result = await fetchDailyQueue(makeSupabase('tok'));
+    expect(result).toEqual({ wordIds: ['id-1', 'id-2', 'id-3'], sessionSeed: 98765 });
+  });
+
+  it('AbortError (8초 timeout) → null 반환', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(
+      new DOMException('The operation was aborted.', 'AbortError'),
+    ));
+    const result = await fetchDailyQueue(makeSupabase('tok'));
+    expect(result).toBeNull();
+  });
+
+  it('5xx 응답 → null 반환', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    const result = await fetchDailyQueue(makeSupabase('tok'));
+    expect(result).toBeNull();
+  });
+});
+
+describe('resolveWordsByIds', () => {
+  it('Supabase 정상 조회 → Word[] 반환 + 순서 보존', async () => {
+    const rows = [
+      { word_id: 'id-1', word: 'test', definition_ko: '테스트', definition_en: 'test', example_sentence: 'This is a test.', difficulty: 1, category: 'daily' },
+      { word_id: 'id-2', word: 'hello', definition_ko: '안녕', definition_en: 'hello', example_sentence: 'Hello!', difficulty: 1, category: 'daily' },
+      { word_id: 'id-3', word: 'world', definition_ko: '세상', definition_en: 'world', example_sentence: 'Hello world.', difficulty: 2, category: 'daily' },
+    ];
+    const mockSupabase = makeSupabaseDb(rows);
+
+    // 순서 역전해서 조회
+    const result = await resolveWordsByIds(['id-3', 'id-1', 'id-2'], mockSupabase);
+    expect(result.map((w) => w.word_id)).toEqual(['id-3', 'id-1', 'id-2']);
+    expect(result[0].word).toBe('world');
+  });
+
+  it('Supabase 에러 → SAMPLE_WORDS fallback', async () => {
+    const mockSupabase = makeSupabaseDb(null, { message: 'DB error' });
+    const result = await resolveWordsByIds(['id-1', 'id-2'], mockSupabase);
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0].word_id).toBe(SAMPLE_WORDS[0].word_id);
+  });
+
+  it('wordIds=[] → [] 반환', async () => {
+    const mockSupabase = makeSupabaseDb([]);
+    const result = await resolveWordsByIds([], mockSupabase);
+    expect(result).toEqual([]);
+  });
+});
