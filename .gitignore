@@ -10,7 +10,7 @@ coverage/
 dist/
 scripts/
 tests/e2e/.env.test
-
-.vercel
-
-.vercel
+__pycache__/
+*.pyc
+*.pyo
+tsconfig.tsbuildinfo
