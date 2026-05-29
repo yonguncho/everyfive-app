@@ -1,6 +1,7 @@
 /**
  * Background sync client
  * Architecture v4 FR-13: 5초 배치, max 50, exponential backoff
+ * FR-13b: visibilitychange flush — 탭 닫기/숨김 시 keepalive fetch로 즉시 전송
  */
 import { popPendingBatch, markEventsAccepted, markEventsRetry, enqueueEvent, type PendingEvent } from '@/lib/storage/indexedDb';
 import { createClient } from '@/lib/supabase/client';
@@ -8,6 +9,8 @@ import { newIdempotentId } from './idempotency';
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
+let cachedToken: string | null = null;
+let unloadCleanup: (() => void) | null = null;
 
 const DEVICE_ID_KEY = 'everyfive_device_id';
 
@@ -42,10 +45,19 @@ export async function trackEvent(opts: {
 export function startSyncLoop(): void {
   if (timer) return;
   timer = setInterval(() => syncNow(), 5000);
+
+  if (typeof document !== 'undefined' && !unloadCleanup) {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') flushBeforeUnload();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    unloadCleanup = () => document.removeEventListener('visibilitychange', handleVisibility);
+  }
 }
 
 export function stopSyncLoop(): void {
   if (timer) { clearInterval(timer); timer = null; }
+  if (unloadCleanup) { unloadCleanup(); unloadCleanup = null; }
 }
 
 function scheduleSync() {
@@ -78,6 +90,7 @@ async function doSync(): Promise<void> {
     const supabase = createClient();
     const { data: sess } = await supabase.auth.getSession();
     if (!sess.session) return;
+    cachedToken = sess.session.access_token;
 
     let resp: Response;
     const ctrl = new AbortController();
@@ -147,5 +160,39 @@ async function doSync(): Promise<void> {
     if (ready.length > 0) {
       await markEventsRetry(ready.map((e) => e.idempotent_id));
     }
+  }
+}
+
+/**
+ * 탭 숨김/닫기 시 keepalive fetch로 미전송 이벤트 즉시 플러시.
+ * visibilitychange 'hidden' 이벤트에서 호출됨.
+ * keepalive: true → 브라우저가 페이지 언로드 후에도 요청 완료를 보장.
+ */
+async function flushBeforeUnload(): Promise<void> {
+  if (!cachedToken) return;
+  try {
+    const pending = await popPendingBatch(50);
+    const now = Date.now();
+    const ready = pending.filter((e) => e.last_attempt_at <= now);
+    if (ready.length === 0) return;
+
+    const body = JSON.stringify({ events: ready.map((p) => p.event) });
+    const contentLength = String(new TextEncoder().encode(body).length);
+
+    // Fire-and-forget: IndexedDB 상태를 변경하지 않음.
+    // 정상 전송 시 서버가 idempotent_id로 중복 차단 → 다음 5s 싱크에서 duplicate로 제거됨.
+    // 전송 실패 시 이벤트는 IndexedDB에 남아 다음 방문 시 재시도됨.
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/sync-events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cachedToken}`,
+        'Content-Length': contentLength,
+      },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // 언로드 경로 — 오류 무시
   }
 }
