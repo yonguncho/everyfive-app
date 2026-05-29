@@ -8,6 +8,17 @@ import { deriveQuality } from '@/lib/srs/sm2Algorithm';
 import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates, buildBlankSentence, getDifficultyFilter, computeSeed } from '@/lib/daily/dailyQueue';
 import { checkAndAwardBadges } from '@/lib/badges/checkBadges';
 
+const LEVEL_ORDER = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const;
+
+/** 누적 활동일 수 → 도달 가능한 최고 레벨 */
+function computeTargetLevel(activeDays: number): string {
+  if (activeDays >= 365) return 'C2';
+  if (activeDays >= 180) return 'C1';
+  if (activeDays >= 90)  return 'B2';
+  if (activeDays >= 30)  return 'B1';
+  if (activeDays >= 7)   return 'A2';
+  return 'A1';
+}
 
 async function fetchDailyWords(
   supabase: ReturnType<typeof createClient>,
@@ -17,7 +28,6 @@ async function fetchDailyWords(
   count: number,
   seed: number,
 ): Promise<Word[]> {
-  // CDN 제거 → Supabase words 테이블에서 직접 조회
   let pool: Word[];
   try {
     const difficulty = getDifficultyFilter(level);
@@ -50,7 +60,6 @@ async function fetchDailyWords(
     pool = fisherYates([...SAMPLE_WORDS], seed);
   }
 
-  // SM-2 due_date 기반 복습 단어 우선 선정
   const { data: dueStates } = await supabase
     .from('user_word_state')
     .select('word_id')
@@ -84,10 +93,11 @@ export default function DailyPage() {
   const [words, setWords] = useState<Word[]>(SAMPLE_WORDS);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [currentLevel, setCurrentLevel] = useState<string>('A1');
 
   function showToast(msg: string) {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   }
 
   useEffect(() => {
@@ -97,7 +107,6 @@ export default function DailyPage() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
-      // 프로필에서 level/track/plan 가져오기
       const { data: profile } = await supabase
         .from('profiles')
         .select('level, track')
@@ -111,22 +120,18 @@ export default function DailyPage() {
 
       const level = profile?.level ?? 'A1';
       const track = profile?.track ?? 'daily';
+      setCurrentLevel(level);
+
       const activeStatuses = ['ACTIVE', 'TRIAL', 'CANCELED_AT_PERIOD_END', 'PAST_DUE'];
       const plan = (sub && activeStatuses.includes(sub.status)) ? sub.plan : 'free';
       const wordCount = plan === 'pro_30' ? 30 : plan === 'pro_20' ? 20 : plan === 'pro_10' ? 10 : 5;
 
-      // daily_queue Edge Function 우선 시도, 실패 시 기존 로직 fallback
       const queue = await fetchDailyQueue(supabase);
       if (queue && queue.wordIds.length > 0) {
-        const fetched = await resolveWordsByIds(
-          queue.wordIds,
-          supabase,
-        );
+        const fetched = await resolveWordsByIds(queue.wordIds, supabase);
         setWords(fetched);
         setSessionSeed(queue.sessionSeed);
       } else {
-        // graceful fallback: 기존 클라이언트 로직 (Edge Function 실패 또는 빈 큐)
-        // KST 기준 오늘 날짜로 결정론적 seed 계산 → 같은 날 재로드 시 동일한 단어 순서 보장
         const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
         const deterministicSeed = computeSeed(user.id, todayKst);
         setSessionSeed(deterministicSeed);
@@ -144,8 +149,6 @@ export default function DailyPage() {
       });
     })();
     return () => { stopSyncLoop(); };
-    // WHY: session_start는 마운트 시점 1회만 발행해야 함.
-    // mode를 deps에 추가하면 mode 토글 시마다 재발행되어 SRS 집계 오염.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -172,8 +175,10 @@ export default function DailyPage() {
     if (idx + 1 >= words.length) {
       if (userId) {
         await trackEvent({ user_id: userId, event_type: 'session_end', payload: { mode, completed: words.length } });
-        // 배지 체크: 프로필에서 streak + 총 학습 단어 수 조회 후 배지 수여
+
         const supabase = createClient();
+
+        // 배지 체크
         const [profileSnap, wordCountSnap] = await Promise.allSettled([
           supabase.from('profiles').select('current_streak').eq('id', userId).single(),
           supabase.from('user_word_state').select('word_id', { count: 'exact', head: true }).eq('user_id', userId),
@@ -183,6 +188,27 @@ export default function DailyPage() {
         const awarded = await checkAndAwardBadges(supabase, userId, streak, totalWords);
         if (awarded.length > 0) {
           showToast(`배지 획득! ${awarded.map(b => b.icon + ' ' + b.name).join(', ')}`);
+        }
+
+        // 레벨 자동 승급 체크
+        // daily_stats(cron rollup) + 오늘 세션을 합산한 누적 활동일 계산
+        const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const { data: dailyRows } = await supabase
+          .from('daily_stats')
+          .select('date')
+          .eq('user_id', userId);
+        const dateset = new Set((dailyRows ?? []).map((r: any) => r.date as string));
+        dateset.add(todayKst); // 오늘 세션은 cron 전이라 미반영일 수 있어 직접 추가
+        const activeDays = dateset.size;
+
+        const targetLevel = computeTargetLevel(activeDays);
+        if (LEVEL_ORDER.indexOf(targetLevel as any) > LEVEL_ORDER.indexOf(currentLevel as any)) {
+          await supabase
+            .from('profiles')
+            .update({ level: targetLevel, last_level_test_at: new Date().toISOString() })
+            .eq('id', userId);
+          setCurrentLevel(targetLevel);
+          showToast(`레벨 업! ${currentLevel} → ${targetLevel}`);
         }
       }
       setDone(true);

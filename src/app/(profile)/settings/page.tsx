@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -14,12 +15,29 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return output;
 }
 
+const LEVEL_ORDER = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const;
+const LEVEL_NAMES: Record<string, string> = {
+  A1: '입문', A2: '초급', B1: '중급', B2: '중상급', C1: '고급', C2: '최고급',
+};
+// 해당 레벨에 도달하는 데 필요한 최소 누적 활동일
+const LEVEL_MILESTONE_DAYS: Record<string, number | null> = {
+  A1: null, A2: 7, B1: 30, B2: 90, C1: 180, C2: 365,
+};
+
+function getNextLevel(level: string): string | null {
+  const idx = LEVEL_ORDER.indexOf(level as any);
+  return idx >= 0 && idx < LEVEL_ORDER.length - 1 ? LEVEL_ORDER[idx + 1] : null;
+}
+
 export default function SettingsPage() {
+  const router = useRouter();
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [pushStatus, setPushStatus] = useState<'idle' | 'subscribing' | 'done' | 'error'>('idle');
+  const [currentLevel, setCurrentLevel] = useState<string>('A1');
+  const [activeDays, setActiveDays] = useState<number>(0);
 
   useEffect(() => {
     (async () => {
@@ -28,14 +46,31 @@ export default function SettingsPage() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('reminder_email_enabled, push_subscription')
-        .eq('id', user.id)
-        .single();
+      const [profileRes, dailyRes] = await Promise.allSettled([
+        supabase.from('profiles')
+          .select('level, reminder_email_enabled, push_subscription')
+          .eq('id', user.id)
+          .single(),
+        supabase.from('daily_stats')
+          .select('date')
+          .eq('user_id', user.id),
+      ]);
 
+      const profile = profileRes.status === 'fulfilled' ? profileRes.value.data : null;
       setEmailEnabled(profile?.reminder_email_enabled ?? false);
       setPushSubscribed(!!profile?.push_subscription);
+      setCurrentLevel(profile?.level ?? 'A1');
+
+      if (dailyRes.status === 'fulfilled') {
+        const rows = dailyRes.value.data ?? [];
+        // daily_stats는 cron rollup이므로 오늘이 미반영일 수 있음
+        // 오늘 KST 날짜를 포함해 Set으로 유니크 집계
+        const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const dateSet = new Set(rows.map((r: any) => r.date as string));
+        dateSet.add(todayKst);
+        setActiveDays(dateSet.size);
+      }
+
       setLoading(false);
     })();
   }, []);
@@ -44,14 +79,11 @@ export default function SettingsPage() {
     if (!userId) return;
     setEmailEnabled(checked);
     const supabase = createClient();
-    const { error: updateErr } = await supabase
+    const { error } = await supabase
       .from('profiles')
       .update({ reminder_email_enabled: checked })
       .eq('id', userId);
-    if (updateErr) {
-      console.error('toggleEmail update failed:', updateErr.message);
-      setEmailEnabled(!checked);
-    }
+    if (error) setEmailEnabled(!checked);
   }
 
   async function handlePushSubscribe() {
@@ -59,14 +91,10 @@ export default function SettingsPage() {
       setPushStatus('error');
       return;
     }
-
     setPushStatus('subscribing');
     try {
       const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        setPushStatus('error');
-        return;
-      }
+      if (permission !== 'granted') { setPushStatus('error'); return; }
 
       const registration = await navigator.serviceWorker.ready;
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
@@ -80,7 +108,6 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription }),
       });
-
       if (!res.ok) throw new Error('subscribe api failed');
 
       setPushSubscribed(true);
@@ -95,10 +122,78 @@ export default function SettingsPage() {
     return <div className="py-12 text-center text-gray-500 text-sm animate-pulse">로딩 중...</div>;
   }
 
+  const nextLevel = getNextLevel(currentLevel);
+  const nextMilestoneDays = nextLevel ? (LEVEL_MILESTONE_DAYS[nextLevel] ?? null) : null;
+  const progressToNext = nextMilestoneDays
+    ? Math.min(100, Math.round((activeDays / nextMilestoneDays) * 100))
+    : 100;
+
   return (
     <div className="max-w-lg mx-auto py-8 px-4 space-y-8">
       <h1 className="text-2xl font-bold">설정</h1>
 
+      {/* 레벨 관리 */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">레벨 관리</h2>
+        <div className="rounded-2xl bg-white shadow-sm p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">현재 레벨</div>
+              <div className="text-2xl font-bold text-brand">{currentLevel}</div>
+              <div className="text-sm text-gray-500">{LEVEL_NAMES[currentLevel] ?? currentLevel}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-gray-500 mb-0.5">누적 학습일</div>
+              <div className="text-2xl font-bold text-gray-800">{activeDays}</div>
+              <div className="text-sm text-gray-500">일</div>
+            </div>
+          </div>
+
+          {/* 다음 레벨 진행 바 */}
+          {nextLevel && nextMilestoneDays ? (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>다음 레벨: {nextLevel} ({LEVEL_NAMES[nextLevel]})</span>
+                <span>{activeDays} / {nextMilestoneDays}일</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-brand transition-all duration-500"
+                  style={{ width: `${progressToNext}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400">
+                {nextMilestoneDays - activeDays > 0
+                  ? `${nextMilestoneDays - activeDays}일 더 학습하면 자동 승급됩니다`
+                  : '오늘 학습을 완료하면 레벨 업됩니다!'}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-brand font-medium">최고 레벨 달성!</div>
+          )}
+
+          {/* 레벨 기준 안내 */}
+          <details className="text-xs text-gray-500">
+            <summary className="cursor-pointer select-none">레벨 승급 기준 보기</summary>
+            <div className="mt-2 space-y-1 pl-2 border-l-2 border-gray-100">
+              <div>A1 → A2: 7일</div>
+              <div>A2 → B1: 30일</div>
+              <div>B1 → B2: 90일</div>
+              <div>B2 → C1: 180일</div>
+              <div>C1 → C2: 365일</div>
+            </div>
+          </details>
+
+          <button
+            onClick={() => router.push('/level-test')}
+            className="w-full rounded-xl border border-gray-300 py-2.5 text-sm text-gray-700 font-medium"
+          >
+            레벨 다시 테스트
+          </button>
+        </div>
+      </section>
+
+      {/* 알림 설정 */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">알림 설정</h2>
 
