@@ -64,12 +64,12 @@ export default function ProgressPage() {
       }));
 
       // next_due_at을 KST 날짜(YYYY-MM-DD)로 그룹화
+      // getHours()+9는 브라우저 로컬 시간대에 따라 결과가 달라짐 → UTC ms에 직접 9시간 더하기
+      const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
       const countByDate: Record<string, number> = {};
       for (const row of (upcomingData ?? [])) {
-        const kstDate = new Date(row.next_due_at);
-        // UTC+9 보정
-        kstDate.setHours(kstDate.getHours() + 9);
-        const key = kstDate.toISOString().slice(0, 10);
+        const key = new Date(new Date(row.next_due_at).getTime() + KST_OFFSET_MS)
+          .toISOString().slice(0, 10);
         countByDate[key] = (countByDate[key] ?? 0) + 1;
       }
       const upcomingReviews = Object.entries(countByDate)

@@ -29,6 +29,7 @@ export interface ReviewInput {
 }
 
 const MIN_EASE = 1.3;
+const MAX_EASE = 3.0;
 const INITIAL_INTERVAL_SECONDS = 3600;  // 1h
 const INTERVAL_LADDER_SECONDS = [
   3600,        // 1h
@@ -72,8 +73,8 @@ export function applyReview(input: ReviewInput): SrsState {
     // interval 한 단계 진행, ease 변화 없음
     intervalSeconds = nextInterval(intervalSeconds, easeFactor);
   } else {
-    // quality 4 또는 5: interval 증가, ease 상향 가능
-    easeFactor = easeFactor + 0.1 * (quality - 4);
+    // quality 4 또는 5: interval 증가, ease 상향 가능 (상한 3.0)
+    easeFactor = Math.min(MAX_EASE, easeFactor + 0.1 * (quality - 4));
     intervalSeconds = nextInterval(intervalSeconds, easeFactor);
   }
 

@@ -214,6 +214,13 @@ export default function DailyPage() {
         <h1 className="text-2xl font-bold">오늘의 {words.length}단어 완료!</h1>
         <p className="text-gray-700">내일 같은 시간에 다시 만나요.</p>
         <a href="/progress" className="block text-brand underline">진행도 보기</a>
+        {toast && (
+          <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-50 pointer-events-none">
+            <div className="bg-gray-800 text-white text-sm px-4 py-3 rounded-xl shadow-lg">
+              {toast}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

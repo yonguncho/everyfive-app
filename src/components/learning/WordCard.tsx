@@ -131,10 +131,10 @@ function MeaningStep({ word, onNext }: { word: Word; onNext: () => void }) {
 
   useEffect(() => {
     fetch('/api/word-image?word=' + encodeURIComponent(word.word))
-      .then((r) => r.json())
+      .then((r) => r.ok ? r.json() : null)
       .then((d) => {
-        setImageUrl(d.image_url ?? null);
-        setPhotographer(d.photographer ?? null);
+        setImageUrl(d?.image_url ?? null);
+        setPhotographer(d?.photographer ?? null);
       })
       .catch(() => setImageUrl(null));
   }, [word.word]);
