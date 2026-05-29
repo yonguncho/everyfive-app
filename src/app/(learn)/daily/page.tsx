@@ -5,7 +5,7 @@ import WordCard, { type Word } from '@/components/learning/WordCard';
 import { createClient } from '@/lib/supabase/client';
 import { startSyncLoop, stopSyncLoop, trackEvent } from '@/lib/sync/syncClient';
 import { deriveQuality } from '@/lib/srs/sm2Algorithm';
-import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates, buildBlankSentence, getDifficultyFilter } from '@/lib/daily/dailyQueue';
+import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates, buildBlankSentence, getDifficultyFilter, computeSeed } from '@/lib/daily/dailyQueue';
 import { checkAndAwardBadges } from '@/lib/badges/checkBadges';
 
 
@@ -117,7 +117,7 @@ export default function DailyPage() {
 
       // daily_queue Edge Function 우선 시도, 실패 시 기존 로직 fallback
       const queue = await fetchDailyQueue(supabase);
-      if (queue) {
+      if (queue && queue.wordIds.length > 0) {
         const fetched = await resolveWordsByIds(
           queue.wordIds,
           supabase,
@@ -125,8 +125,12 @@ export default function DailyPage() {
         setWords(fetched);
         setSessionSeed(queue.sessionSeed);
       } else {
-        // graceful fallback: 기존 클라이언트 로직
-        const fetched = await fetchDailyWords(supabase, user.id, level, track, wordCount, sessionSeed);
+        // graceful fallback: 기존 클라이언트 로직 (Edge Function 실패 또는 빈 큐)
+        // KST 기준 오늘 날짜로 결정론적 seed 계산 → 같은 날 재로드 시 동일한 단어 순서 보장
+        const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const deterministicSeed = computeSeed(user.id, todayKst);
+        setSessionSeed(deterministicSeed);
+        const fetched = await fetchDailyWords(supabase, user.id, level, track, wordCount, deterministicSeed);
         setWords(fetched);
       }
 
@@ -174,8 +178,8 @@ export default function DailyPage() {
           supabase.from('profiles').select('current_streak').eq('id', userId).single(),
           supabase.from('user_word_state').select('word_id', { count: 'exact', head: true }).eq('user_id', userId),
         ]);
-        const streak = profileSnap.status === 'fulfilled' ? (profileSnap.value.data?.current_streak ?? 0) : 0;
-        const totalWords = wordCountSnap.status === 'fulfilled' ? (wordCountSnap.value.count ?? 0) : 0;
+        const streak = profileSnap.status === 'fulfilled' ? ((profileSnap.value.data ?? {}) as any).current_streak ?? 0 : 0;
+        const totalWords = wordCountSnap.status === 'fulfilled' ? wordCountSnap.value.count ?? 0 : 0;
         const awarded = await checkAndAwardBadges(supabase, userId, streak, totalWords);
         if (awarded.length > 0) {
           showToast(`배지 획득! ${awarded.map(b => b.icon + ' ' + b.name).join(', ')}`);

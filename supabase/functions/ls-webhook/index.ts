@@ -133,7 +133,13 @@ serve(async (req: Request) => {
     return new Response('Invalid user_id', { status: 400 });
   }
 
-  const variantId = String(attrs.variant_id ?? '');
+  // variant_id가 number/string이 아닌 경우(예: {}) String() 변환 시 '[object Object]'로 coerce됨 — 명시적 타입 검증
+  const rawVariantId = attrs.variant_id;
+  if (typeof rawVariantId !== 'number' && typeof rawVariantId !== 'string') {
+    console.warn(JSON.stringify({ event: 'invalid_variant_id_type', type: typeof rawVariantId, eventId }));
+    return new Response('Invalid variant_id', { status: 400 });
+  }
+  const variantId = String(rawVariantId);
   // Reject unknown variant: falling back to 'free' would create a wrong subscription record.
   // Return 200 (not 400) to prevent Lemon Squeezy retries for legitimately unhandled variants.
   const plan = VARIANT_PLAN[variantId];

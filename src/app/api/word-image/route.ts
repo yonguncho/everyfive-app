@@ -14,10 +14,22 @@ function createAdmin() {
 }
 
 // 인메모리 rate-limit 버킷 (서버리스 재시작 시 초기화 — 캐시 계층이 1차 방어)
+// NOTE: 인스턴스별 독립 상태 — 글로벌 rate limit 목적이 아닌 Unsplash 호출 과부하 방지용
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+let lastBucketPrune = 0;
+const PRUNE_INTERVAL_MS = 5 * 60_000; // 5분마다 만료 항목 제거 (Map 무한 증가 방지)
+
+function maybePruneRateBuckets(now: number): void {
+  if (now - lastBucketPrune < PRUNE_INTERVAL_MS) return;
+  lastBucketPrune = now;
+  for (const [ip, bucket] of rateBuckets) {
+    if (now > bucket.resetAt) rateBuckets.delete(ip);
+  }
+}
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
+  maybePruneRateBuckets(now);
   const bucket = rateBuckets.get(ip);
   if (!bucket || now > bucket.resetAt) {
     rateBuckets.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });

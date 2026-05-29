@@ -310,6 +310,16 @@ serve(async (req: Request) => {
       }
     }
 
+    // SAMPLE_WORD_IDS fallback: words 테이블이 비어 있거나 모두 학습 완료된 경우
+    if (wordIds.length < queueSize) {
+      const usedIds = new Set(wordIds);
+      for (const sampleId of SAMPLE_WORD_IDS) {
+        if (wordIds.length >= queueSize) break;
+        if (!usedIds.has(sampleId)) wordIds.push(sampleId);
+      }
+      console.log(JSON.stringify({ event: 'sample_fallback', userId, total: wordIds.length }));
+    }
+
     wordIds = wordIds.slice(0, queueSize);
 
     // 9. Fisher-Yates 셔플 (seed는 step 8 이전에 선언됨)

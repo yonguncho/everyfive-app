@@ -103,7 +103,8 @@ async function verifyJwtAndGetUserId(authHeader: string): Promise<string | null>
     const { data: { user }, error } = await verifier.auth.getUser();
     if (error || !user) return null;
     return user.id;
-  } catch {
+  } catch (e) {
+    console.warn(JSON.stringify({ event: 'jwt_verify_unexpected_error', error: String(e) }));
     return null;
   }
 }
@@ -376,21 +377,29 @@ async function applyEventsToState(admin: any, uid: string, wid: string, events: 
   const rawQuality = last.payload?.quality ?? 3;
   const quality = (typeof rawQuality === 'number' && rawQuality >= 0 && rawQuality <= 5) ? rawQuality : 3;
   const LADDER = [3600, 86400, 86400 * 3, 86400 * 7, 86400 * 14, 86400 * 30, 86400 * 60];
+  const MIN_EASE = 1.3;
+  const MAX_INTERVAL_SECONDS = 86400 * 365; // 365일 상한
 
   let newIntervalSec: number;
   let newEase: number;
 
   if (quality < 3) {
     newIntervalSec = 3600;
-    newEase = Math.max(1.3, (current?.ease_factor ?? 2.5) - 0.2);
+    newEase = Math.max(MIN_EASE, (current?.ease_factor ?? 2.5) - 0.2);
   } else if (quality === 3) {
-    newIntervalSec = current?.interval_seconds ?? 3600;
-    newEase = Math.max(1.3, (current?.ease_factor ?? 2.5) - 0.05);
+    const curInterval = current?.interval_seconds ?? 3600;
+    const idx = LADDER.findIndex((s) => s > curInterval);
+    newIntervalSec = idx === -1
+      ? Math.min(Math.round(curInterval * (current?.ease_factor ?? 2.5)), MAX_INTERVAL_SECONDS)
+      : LADDER[idx];
+    newEase = Math.max(MIN_EASE, (current?.ease_factor ?? 2.5) - 0.05);
   } else {
     const curInterval = current?.interval_seconds ?? 3600;
     const idx = LADDER.findIndex((s) => s > curInterval);
-    newIntervalSec = idx === -1 ? Math.round(curInterval * (current?.ease_factor ?? 2.5)) : LADDER[idx];
-    newEase = (current?.ease_factor ?? 2.5) + 0.1 * (quality - 4);
+    newIntervalSec = idx === -1
+      ? Math.min(Math.round(curInterval * (current?.ease_factor ?? 2.5)), MAX_INTERVAL_SECONDS)
+      : LADDER[idx];
+    newEase = Math.max(MIN_EASE, (current?.ease_factor ?? 2.5) + 0.1 * (quality - 4));
   }
 
   const newState = {

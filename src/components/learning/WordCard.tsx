@@ -223,10 +223,25 @@ function PronunciationStep({
       setTimeout(() => safeOnResult('skipped'), 1500);
       return;
     }
-    if (r.error === 'aborted' || r.error === 'audio_capture') {
-      setError('마이크 연결 오류예요. 다시 시도하거나 건너뛰기를 눌러주세요.');
+    if (r.error === 'audio_capture') {
+      // 마이크 장치 없음(NotFoundError 포함) — 영구적 오류, 조용한 모드로 전환
+      setError('마이크를 찾을 수 없어요. 조용한 모드로 전환합니다.');
+      setPhase('done');
+      setTimeout(() => {
+        onPermissionDenied?.();
+        safeOnResult('skipped');
+      }, 1500);
+      return;
+    }
+    if (r.error === 'aborted') {
+      setError('마이크 연결이 중단됐어요. 다시 시도하거나 건너뛰기를 눌러주세요.');
       setPhase('done');
       return; // 자동 진행 안 함 — 재시도 또는 건너뛰기
+    }
+    if (r.error === 'network') {
+      setError('네트워크 오류로 음성 인식에 실패했어요. 건너뛰기를 눌러주세요.');
+      setPhase('done');
+      return;
     }
 
     setPhase('analyzing');
