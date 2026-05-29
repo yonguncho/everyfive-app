@@ -181,7 +181,7 @@ function PronunciationStep({
   onResult: (r: 'success' | 'failed' | 'skipped', score?: number) => void;
   onPermissionDenied?: () => void;
 }) {
-  const [phase, setPhase] = useState<'listening' | 'speaking' | 'analyzing' | 'done'>('listening');
+  const [phase, setPhase] = useState<'listening' | 'speaking' | 'analyzing' | 'done' | 'success'>('listening');
   const [error, setError] = useState<string | null>(null);
   const [recogResult, setRecogResult] = useState<RecognitionResult | null>(null);
   const [mismatchText, setMismatchText] = useState<string | null>(null);
@@ -259,7 +259,9 @@ function PronunciationStep({
         setError('다시 시도하거나 건너뛰기를 눌러주세요.');
         return;
       }
-      safeOnResult('success', r.result.score);
+      // 발음 성공 — '잘했어요!' 피드백 표시 후 1.5초 뒤 진행
+      setPhase('success');
+      setTimeout(() => safeOnResult('success', r.result!.score), 1500);
     }, 400);
   }
 
@@ -272,8 +274,19 @@ function PronunciationStep({
         <div className="text-sm text-gray-400">[{word.pronunciation_ko}]</div>
       )}
 
-      {/* 발음 점수 UI — confidence 지원 브라우저에서만 표시 */}
-      {recogResult?.score !== undefined && (
+      {/* 발음 성공 피드백 */}
+      {phase === 'success' && (
+        <div aria-live="polite" className="rounded-xl bg-green-50 border border-green-200 p-5 space-y-1 animate-pulse">
+          <div className="text-3xl">🎉</div>
+          <p className="text-green-700 font-semibold text-lg">잘했어요!</p>
+          {recogResult?.score !== undefined && (
+            <p className="text-sm text-green-600">{recogResult.score}점 — {recogResult.scoreLabel}</p>
+          )}
+        </div>
+      )}
+
+      {/* 발음 점수 UI — 성공이 아닐 때만 표시 (불일치/건너뜀) */}
+      {phase !== 'success' && recogResult?.score !== undefined && (
         <div aria-live="polite" className="rounded-xl bg-gray-50 p-4 space-y-1">
           <span className="text-2xl font-bold">{recogResult.score}점</span>
           <p className="text-sm text-gray-600">{recogResult.scoreLabel}</p>
@@ -294,7 +307,7 @@ function PronunciationStep({
         </button>
       </div>
 
-      {mode === 'focused' ? (
+      {mode === 'focused' && phase !== 'success' ? (
         <div className="space-y-3">
           <p className="text-sm text-gray-600">아래 버튼을 누르고 따라 말해보세요</p>
           <button
@@ -311,7 +324,7 @@ function PronunciationStep({
           </button>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
-      ) : (
+      ) : phase !== 'success' ? (
         <div className="space-y-3">
           <p className="text-sm text-gray-600">조용한 모드 — 입모양만 따라하기</p>
           <button
@@ -321,7 +334,7 @@ function PronunciationStep({
             다음
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

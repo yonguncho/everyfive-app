@@ -6,13 +6,20 @@ import type { Word } from '@/components/learning/WordCard';
  */
 export function buildBlankSentence(word: string, exampleSentence?: string | null): string {
   if (!exampleSentence) return `_____ 에 들어갈 단어는?`;
-  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-  if (regex.test(exampleSentence)) {
-    return exampleSentence.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), '_____');
+
+  // _N suffix 제거 (add_words_v2.py 생성 단어: "acquisition_10" → "acquisition")
+  const baseWord = word.replace(/_\d+$/, '');
+
+  function tryReplace(target: string): string | null {
+    const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${escaped}\\b`, 'gi');
+    if (re.test(exampleSentence!)) {
+      return exampleSentence!.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), '_____');
+    }
+    return null;
   }
-  // 문장에서 단어를 찾지 못한 경우 — 예문을 힌트로 보여주고 빈칸 추가
-  return `${exampleSentence} → _____`;
+
+  return tryReplace(baseWord) ?? tryReplace(word) ?? `다음 뜻의 영어 단어를 입력하세요: _____`;
 }
 
 /** FNV-32a non-cryptographic hash (Edge Function과 동일 구현, seed 생성용) */
