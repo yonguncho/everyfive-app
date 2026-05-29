@@ -1,5 +1,20 @@
 import type { Word } from '@/components/learning/WordCard';
 
+/**
+ * example_sentence에서 단어를 _____로 치환해 빈칸 문제 생성.
+ * 단어가 문장에 없으면 단어 자체를 답으로 하는 단순 빈칸 반환.
+ */
+export function buildBlankSentence(word: string, exampleSentence?: string | null): string {
+  if (!exampleSentence) return `_____ 에 들어갈 단어는?`;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
+  if (regex.test(exampleSentence)) {
+    return exampleSentence.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), '_____');
+  }
+  // 문장에서 단어를 찾지 못한 경우 — 예문을 힌트로 보여주고 빈칸 추가
+  return `${exampleSentence} → _____`;
+}
+
 /** FNV-32a non-cryptographic hash (Edge Function과 동일 구현, seed 생성용) */
 export function fnv32a(str: string): number {
   let hash = 0x811c9dc5;
@@ -194,7 +209,7 @@ export async function resolveWordsByIds(
         scenarios: r.example_sentence
           ? [{ context: 'example', example_en: r.example_sentence, example_ko: '' }]
           : [],
-        quiz: { blank_sentence: `_____`, answer: r.word },
+        quiz: { blank_sentence: buildBlankSentence(r.word, r.example_sentence), answer: r.word },
       }));
 
     if (resolved.length === 0) return SAMPLE_WORDS.slice(0, wordIds.length || 5);

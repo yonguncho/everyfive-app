@@ -283,19 +283,25 @@ serve(async (req: Request) => {
         ? `(${allExcludeIds.map((id) => `'${id}'`).join(',')})`
         : "('00000000-0000-0000-0000-000000000000')";
 
+      // 후보 풀을 넉넉하게 가져온 뒤 seed shuffle로 매일 다른 단어 선택
+      // needed만 가져오면 항상 같은 첫 N개(UUID 오름차순)가 반복됨
+      const candidateLimit = Math.min(needed * 40, 300);
       const { data: newWords, error: newWordsErr } = await admin
         .from('words')
         .select('word_id')
         .not('word_id', 'in', excludeClause)
         .order('word_id')
-        .limit(needed);
+        .limit(candidateLimit);
 
       if (newWordsErr) {
         console.error(JSON.stringify({ event: 'words_select_failed', userId, error: newWordsErr.message }));
       } else {
-        const supplementIds = (newWords ?? []).map((w: any) => w.word_id as string);
+        const candidateIds = (newWords ?? []).map((w: any) => w.word_id as string);
+        // XOR로 seed 변형 → 후보 풀 셔플과 최종 셔플이 독립적으로 동작
+        const shuffledCandidates = fisherYates(candidateIds, seed ^ 0x5a5a5a5a);
+        const supplementIds = shuffledCandidates.slice(0, needed);
         wordIds = [...wordIds, ...supplementIds];
-        console.log(JSON.stringify({ event: 'words_supplement', userId, added: supplementIds.length, totalAfter: wordIds.length }));
+        console.log(JSON.stringify({ event: 'words_supplement', userId, candidates: candidateIds.length, added: supplementIds.length, totalAfter: wordIds.length }));
       }
     }
 

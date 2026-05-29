@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { fetchDailyQueue, resolveWordsByIds, SAMPLE_WORDS, fnv32a, computeSeed, fisherYates } from '../dailyQueue';
+import { fetchDailyQueue, resolveWordsByIds, SAMPLE_WORDS, fnv32a, computeSeed, fisherYates, buildBlankSentence } from '../dailyQueue';
 
 const makeSupabase = (token: string | null) => ({
   auth: {
@@ -49,6 +49,45 @@ describe('순수 함수: fnv32a / computeSeed / fisherYates', () => {
     const shuffle2 = fisherYates(arr, seed);
     expect(shuffle1).toEqual(shuffle2);
     expect([...shuffle1].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('buildBlankSentence', () => {
+  it('예문에 단어가 있으면 _____로 치환', () => {
+    const result = buildBlankSentence('bag', 'Put your books in the bag.');
+    expect(result).toBe('Put your books in the _____.');
+    expect(result).not.toBe('_____');
+  });
+
+  it('대소문자 구분 없이 치환', () => {
+    const result = buildBlankSentence('apple', 'She ate an Apple every day.');
+    expect(result).toBe('She ate an _____ every day.');
+  });
+
+  it('단어가 예문에 없으면 힌트 포맷 반환', () => {
+    const result = buildBlankSentence('bag', 'She carried a heavy load.');
+    expect(result).toContain('_____');
+  });
+
+  it('예문이 없으면 기본 빈칸 반환', () => {
+    const result = buildBlankSentence('bag', null);
+    expect(result).toContain('_____');
+  });
+
+  it('resolveWordsByIds가 반환하는 quiz.blank_sentence에 문장이 포함됨 (___만 아님)', async () => {
+    const rows = [
+      { word_id: 'id-1', word: 'bag', definition_ko: '가방', definition_en: 'bag', example_sentence: 'Put your books in the bag.', difficulty: 1, category: 'noun' },
+    ];
+    const mockSupabase = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: rows, error: null }),
+        }),
+      }),
+    };
+    const result = await resolveWordsByIds(['id-1'], mockSupabase);
+    expect(result[0].quiz.blank_sentence).toBe('Put your books in the _____.');
+    expect(result[0].quiz.blank_sentence).not.toBe('_____');
   });
 });
 

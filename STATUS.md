@@ -1,6 +1,6 @@
 # EveryFive Phase 1.0 — 현재 진행 상황
 
-마지막 업데이트: 2026-05-26
+마지막 업데이트: 2026-05-29
 
 ## 완료된 모듈
 
@@ -14,14 +14,15 @@
 - [x] track-select page
 - [ ] 실제 로그인 E2E 테스트 (Playwright)
 
-### B. 콘텐츠 (220개 생성됨)
+### B. 콘텐츠 (v1.7: 1544개)
 - [x] everyfive-content repo 구조
 - [x] word.schema.json (level/track/options 포함)
 - [x] generate.js (Codex bridge)
 - [x] validate.js (Ajv)
-- [x] 220개 단어 생성 완료 (A1×24, A2×49, B1×75, B2×72 / daily×151, academic×69)
+- [x] scripts/generate_words_db.py (Codex bridge, DB 직접 INSERT)
+- [x] **1,544개 단어 생성 완료** (difficulty 1: 334, 2: 321, 3: 271, 4: 305, 5: 313)
 - [x] **everyfive-content CDN 배포 완료** → https://everyfive-content.vercel.app/content/v1/words.json
-- [ ] 전체 1,500개 생성 (목표 — A1 academic 배치 생성 중)
+- [x] 전체 1,500개 이상 달성 (목표 초과: 1,544개)
 
 ### C. Lemon Squeezy
 - [x] check-entitlement API route

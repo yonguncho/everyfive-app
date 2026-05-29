@@ -5,7 +5,7 @@ import WordCard, { type Word } from '@/components/learning/WordCard';
 import { createClient } from '@/lib/supabase/client';
 import { startSyncLoop, stopSyncLoop, trackEvent } from '@/lib/sync/syncClient';
 import { deriveQuality } from '@/lib/srs/sm2Algorithm';
-import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates } from '@/lib/daily/dailyQueue';
+import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates, buildBlankSentence } from '@/lib/daily/dailyQueue';
 
 
 async function fetchDailyWords(
@@ -23,7 +23,7 @@ async function fetchDailyWords(
       .from('words')
       .select('*')
       .order('word_id')
-      .limit(count * 3);
+      .limit(Math.min(count * 40, 300));
 
     if (error || !rows || rows.length === 0) throw new Error('no words');
     pool = rows.map((r: any): Word => ({
@@ -40,7 +40,7 @@ async function fetchDailyWords(
       scenarios: r.example_sentence
         ? [{ context: 'example', example_en: r.example_sentence, example_ko: '' }]
         : [],
-      quiz: { blank_sentence: '_____', answer: r.word },
+      quiz: { blank_sentence: buildBlankSentence(r.word, r.example_sentence), answer: r.word },
     }));
   } catch (e) {
     console.warn(JSON.stringify({ event: 'fetch_daily_words_failed', error: (e as Error)?.message }));

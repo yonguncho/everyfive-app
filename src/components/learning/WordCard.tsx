@@ -177,16 +177,48 @@ function PronunciationStep({
   useEffect(() => { playTts(); /* eslint-disable-next-line */ }, []);
 
   async function tryRecognize() {
-    if (!isSupported()) { setError('이 브라우저는 발음 인식 미지원'); safeOnResult('skipped'); return; }
+    if (!isSupported()) {
+      setError('이 브라우저는 발음 인식을 지원하지 않아요');
+      setPhase('done');
+      setTimeout(() => safeOnResult('skipped'), 1500);
+      return;
+    }
+    setError(null);
     setPhase('speaking');
     const r = await recognizeWord({ expectedWord: word.word });
-    if (r.error === 'permission_denied') { setError('마이크 권한 거부됨'); safeOnResult('skipped'); return; }
-    if (r.error === 'unsupported') { setError('브라우저 미지원'); safeOnResult('skipped'); return; }
+
+    if (r.error === 'permission_denied') {
+      setError('마이크 권한이 필요해요. 브라우저 설정에서 허용 후 다시 시도해주세요.');
+      setPhase('done');
+      return; // 자동 진행 안 함 — 건너뛰기 버튼으로 직접 Skip
+    }
+    if (r.error === 'unsupported') {
+      setError('이 브라우저는 발음 인식을 지원하지 않아요');
+      setPhase('done');
+      setTimeout(() => safeOnResult('skipped'), 1500);
+      return;
+    }
+    if (r.error === 'aborted' || r.error === 'audio_capture') {
+      setError('마이크 연결 오류예요. 다시 시도하거나 건너뛰기를 눌러주세요.');
+      setPhase('done');
+      return; // 자동 진행 안 함 — 재시도 또는 건너뛰기
+    }
+
     setPhase('analyzing');
     setTimeout(() => {
       setRecogResult(r.result ?? null);
       setPhase('done');
-      safeOnResult(r.result?.matched ? 'success' : 'failed', r.result?.score);
+      // 말소리를 전혀 감지 못한 경우(no_speech 3회 소진)
+      if (!r.result?.text) {
+        setError('말소리를 인식하지 못했어요. 다시 시도하거나 건너뛰기를 눌러주세요.');
+        return;
+      }
+      // 발음은 됐지만 단어 불일치 — 자동 진행 금지, 재시도 유도
+      if (!r.result.matched) {
+        setError(`"${r.result.text}" 로 인식됐어요. 다시 시도하거나 건너뛰기를 눌러주세요.`);
+        return;
+      }
+      safeOnResult('success', r.result.score);
     }, 400);
   }
 
@@ -304,7 +336,10 @@ function QuizStep({ word, onResult }: { word: Word; onResult: (correct: boolean)
     const correct = normalize(answer) === normalize(word.quiz.answer);
     setIsCorrect(correct);
     setSubmitted(true);
-    setTimeout(() => onResult(correct), 800);
+    // 정답 시에만 자동 진행 — 오답은 "확인하고 다음으로" 버튼으로 명시적 진행
+    if (correct) {
+      setTimeout(() => onResult(true), 800);
+    }
   }
 
   return (
@@ -315,17 +350,19 @@ function QuizStep({ word, onResult }: { word: Word; onResult: (correct: boolean)
       {hasOptions ? (
         <div className="grid grid-cols-2 gap-2">
           {word.quiz.options!.map((opt) => {
+            const isCorrectOpt = normalize(opt) === normalize(word.quiz.answer);
             const isSelected = selected === opt;
-            const reveal = submitted && isSelected;
+            let cls = 'border-gray-200 bg-white hover:bg-gray-50';
+            if (submitted) {
+              if (isCorrectOpt) cls = 'border-green-500 bg-green-50 text-green-700';
+              else if (isSelected) cls = 'border-red-500 bg-red-50 text-red-700';
+            }
             return (
               <button
                 key={opt}
                 disabled={submitted}
                 onClick={() => { setSelected(opt); submit(opt); }}
-                className={`rounded-xl border py-3 px-2 text-sm font-medium transition-colors
-                  ${reveal
-                    ? isCorrect ? 'border-green-500 bg-green-50 text-green-700' : 'border-red-500 bg-red-50 text-red-700'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                className={`rounded-xl border py-3 px-2 text-sm font-medium transition-colors ${cls}`}
               >
                 {opt}
               </button>
@@ -342,13 +379,15 @@ function QuizStep({ word, onResult }: { word: Word; onResult: (correct: boolean)
             placeholder="빈칸에 들어갈 표현"
             className="w-full rounded-xl border border-gray-300 px-4 py-3"
           />
-          <button
-            onClick={() => submit(input)}
-            disabled={!input || submitted}
-            className="w-full rounded-xl bg-brand py-3 text-white font-medium disabled:bg-gray-400"
-          >
-            확인
-          </button>
+          {!submitted && (
+            <button
+              onClick={() => submit(input)}
+              disabled={!input}
+              className="w-full rounded-xl bg-brand py-3 text-white font-medium disabled:bg-gray-400"
+            >
+              확인
+            </button>
+          )}
         </>
       )}
 
@@ -356,6 +395,16 @@ function QuizStep({ word, onResult }: { word: Word; onResult: (correct: boolean)
         <p className={`text-sm font-medium ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
           {isCorrect ? '정답!' : `오답 — 정답: ${word.quiz.answer}`}
         </p>
+      )}
+
+      {/* 오답: 정답을 확인하고 명시적으로 다음 단어로 넘어가야 함 */}
+      {submitted && isCorrect === false && (
+        <button
+          onClick={() => onResult(false)}
+          className="w-full rounded-xl bg-gray-500 py-3 text-white font-medium"
+        >
+          확인하고 다음으로
+        </button>
       )}
     </div>
   );
