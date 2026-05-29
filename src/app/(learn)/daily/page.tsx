@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import WordCard, { type Word } from '@/components/learning/WordCard';
 import { createClient } from '@/lib/supabase/client';
 import { startSyncLoop, stopSyncLoop, trackEvent } from '@/lib/sync/syncClient';
@@ -80,6 +81,7 @@ async function fetchDailyWords(
 type Mode = 'focused' | 'quiet' | 'reverse';
 
 export default function DailyPage() {
+  const router = useRouter();
   const [sessionSeed, setSessionSeed] = useState<number>(
     () => ((Date.now() * 0x9e3779b9) ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
   );
@@ -109,9 +111,16 @@ export default function DailyPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('level, track')
+        .select('level, track, last_level_test_at')
         .eq('id', user.id)
         .single();
+
+      // 온보딩 미완료: 레벨 테스트 페이지로 리다이렉트
+      if (!profile?.last_level_test_at) {
+        router.replace('/level-test');
+        return;
+      }
+
       const { data: sub } = await supabase
         .from('subscriptions')
         .select('plan, status')

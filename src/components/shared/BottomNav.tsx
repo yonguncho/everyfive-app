@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const NAV = [
   { href: '/daily',        label: '학습',  icon: '📖' },
   { href: '/progress',     label: '진행도', icon: '📊' },
+  { href: '/wordbook',     label: '단어장', icon: '📚' },
   { href: '/subscription', label: '플랜',  icon: '⭐' },
 ];
 
