@@ -125,6 +125,13 @@ export const SAMPLE_WORDS: Word[] = [
   },
 ];
 
+/** level 문자열로부터 difficulty 필터 배열 반환 */
+export function getDifficultyFilter(level: string): number[] {
+  if (level === 'A1') return [1, 2];
+  if (level === 'B1') return [2, 3];
+  return [3, 4, 5];
+}
+
 interface DailyQueueResponse {
   word_ids: string[];
   session_seed: number;
@@ -181,7 +188,7 @@ export async function resolveWordsByIds(
   try {
     const { data: rows, error } = await supabase
       .from('words')
-      .select('word_id, word, definition_ko, definition_en, example_sentence, difficulty, category')
+      .select('word_id, word, definition_ko, definition_en, example_sentence, example_sentence_ko, difficulty, category')
       .in('word_id', wordIds);
 
     if (error) throw error;
@@ -207,7 +214,7 @@ export async function resolveWordsByIds(
         ipa: '',
         phrasal_verbs: [],
         scenarios: r.example_sentence
-          ? [{ context: 'example', example_en: r.example_sentence, example_ko: '' }]
+          ? [{ context: 'example', example_en: r.example_sentence, example_ko: r.example_sentence_ko ?? '' }]
           : [],
         quiz: { blank_sentence: buildBlankSentence(r.word, r.example_sentence), answer: r.word },
       }));

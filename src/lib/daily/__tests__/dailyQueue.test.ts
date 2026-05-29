@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { fetchDailyQueue, resolveWordsByIds, SAMPLE_WORDS, fnv32a, computeSeed, fisherYates, buildBlankSentence } from '../dailyQueue';
+import { fetchDailyQueue, resolveWordsByIds, SAMPLE_WORDS, fnv32a, computeSeed, fisherYates, buildBlankSentence, getDifficultyFilter } from '../dailyQueue';
 
 const makeSupabase = (token: string | null) => ({
   auth: {
@@ -119,6 +119,41 @@ describe('fetchDailyQueue', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     const result = await fetchDailyQueue(makeSupabase('tok'));
     expect(result).toBeNull();
+  });
+});
+
+describe('getDifficultyFilter — BUG-01: 레벨별 difficulty 배열', () => {
+  it('A1 → [1, 2]', () => {
+    expect(getDifficultyFilter('A1')).toEqual([1, 2]);
+  });
+
+  it('B1 → [2, 3]', () => {
+    expect(getDifficultyFilter('B1')).toEqual([2, 3]);
+  });
+
+  it('C1 → [3, 4, 5]', () => {
+    expect(getDifficultyFilter('C1')).toEqual([3, 4, 5]);
+  });
+
+  it('알 수 없는 레벨 → [3, 4, 5] 기본값', () => {
+    expect(getDifficultyFilter('unknown')).toEqual([3, 4, 5]);
+  });
+});
+
+describe('fisherYates — BUG-05: SAMPLE_WORDS fallback seed 보장', () => {
+  it('seed가 다르면 배열 순서도 다름 (매일 다른 단어 노출)', () => {
+    const arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const s1 = fisherYates(arr, 1001);
+    const s2 = fisherYates(arr, 9999);
+    expect(s1).not.toEqual(s2);
+  });
+
+  it('같은 seed → SAMPLE_WORDS 순서도 동일 (결정론적 fallback)', () => {
+    const seed = 12345;
+    const copy = SAMPLE_WORDS.map((w) => w.word_id);
+    const r1 = fisherYates([...copy], seed);
+    const r2 = fisherYates([...copy], seed);
+    expect(r1).toEqual(r2);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { levenshteinSimilarity, computePronounceScore } from '../webSpeech';
+import { levenshteinSimilarity, computePronounceScore, buildCharAlignment } from '../webSpeech';
 
 function pronounceScore(confidence: number, recognized: string, expected: string): number {
   return computePronounceScore(confidence, recognized, expected).score;
@@ -85,5 +85,41 @@ describe('confidence undefined → score 미설정 (NFR-07)', () => {
   it('levenshteinSimilarity는 항상 0~1 범위', () => {
     expect(levenshteinSimilarity('hello', 'world')).toBeGreaterThanOrEqual(0);
     expect(levenshteinSimilarity('hello', 'world')).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('buildCharAlignment', () => {
+  it('완전 일치 → 모든 쌍 match=true', () => {
+    const result = buildCharAlignment('focus', 'focus');
+    expect(result.every((p) => p.match)).toBe(true);
+    expect(result.map((p) => p.exp).join('')).toBe('focus');
+  });
+
+  it('1자 치환 — focus vs fockus: c↔k 불일치', () => {
+    const result = buildCharAlignment('focus', 'fockus');
+    const mismatches = result.filter((p) => !p.match);
+    expect(mismatches.length).toBeGreaterThan(0);
+    // 전체 길이는 정렬 후 max(5,6) 이상
+    expect(result.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('완전 불일치 → match=true 항목 없음', () => {
+    const result = buildCharAlignment('abc', 'xyz');
+    expect(result.every((p) => !p.match)).toBe(true);
+  });
+
+  it('recognized가 빈 문자열 → exp만 남고 rec=null', () => {
+    const result = buildCharAlignment('hi', '');
+    expect(result.every((p) => p.rec === null)).toBe(true);
+  });
+
+  it('expected가 빈 문자열 → exp=null, rec만 남음', () => {
+    const result = buildCharAlignment('', 'hi');
+    expect(result.every((p) => p.exp === null)).toBe(true);
+  });
+
+  it('대소문자 무시 — Focus vs focus → 모두 일치', () => {
+    const result = buildCharAlignment('Focus', 'focus');
+    expect(result.every((p) => p.match)).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { isSupported, recognizeWord, speak, type RecognitionResult } from '@/lib/speech/webSpeech';
+import { isSupported, recognizeWord, speak, buildCharAlignment, type RecognitionResult } from '@/lib/speech/webSpeech';
 
 export interface Word {
   word_id: string;
@@ -10,6 +10,7 @@ export interface Word {
   definition_ko?: string;
   definition_en?: string;
   example_sentence?: string;
+  example_sentence_ko?: string;
   difficulty?: number;
   category?: string;
   // 기존 필드
@@ -30,18 +31,29 @@ const CONTEXT_KO: Record<string, string> = {
 
 interface Props {
   word: Word;
-  mode: 'focused' | 'quiet';
+  mode: 'focused' | 'quiet' | 'reverse';
   onComplete: (result: {
     recognitionResult: 'success' | 'failed' | 'skipped';
     quizCorrect: boolean | null;
     speechScore?: number;
   }) => void;
+  onPermissionDenied?: () => void;
 }
 
-type Step = 'meaning' | 'pronunciation' | 'phrasal' | 'scenarios' | 'quiz';
-const ORDER: Step[] = ['meaning', 'pronunciation', 'phrasal', 'scenarios', 'quiz'];
+type Step = 'meaning' | 'pronunciation' | 'phrasal' | 'scenarios' | 'quiz' | 'reverse';
 
-export default function WordCard({ word, mode, onComplete }: Props) {
+export default function WordCard({ word, mode, onComplete, onPermissionDenied }: Props) {
+  // reverse 모드: 한국어 힌트 → 영어 입력 단일 스텝
+  const ORDER: Step[] = mode === 'reverse'
+    ? ['reverse']
+    : [
+      'meaning',
+      'pronunciation',
+      ...(word.phrasal_verbs.length > 0 ? ['phrasal' as Step] : []),
+      ...(word.scenarios.length > 0 ? ['scenarios' as Step] : []),
+      'quiz',
+    ];
+
   const [step, setStep] = useState<Step>('meaning');
   const [recognitionResult, setRecognitionResult] = useState<'pending' | 'success' | 'failed' | 'skipped'>('pending');
   const [quizCorrect, setQuizCorrect] = useState<boolean | null>(null);
@@ -74,11 +86,21 @@ export default function WordCard({ word, mode, onComplete }: Props) {
         ))}
       </div>
 
+      {step === 'reverse' && (
+        <ReverseStep
+          word={word}
+          onResult={(correct) => {
+            setQuizCorrect(correct);
+            advance(correct);
+          }}
+        />
+      )}
       {step === 'meaning' && <MeaningStep word={word} onNext={advance} />}
       {step === 'pronunciation' && (
         <PronunciationStep
           word={word}
           mode={mode}
+          onPermissionDenied={onPermissionDenied}
           onResult={(r, score) => {
             setRecognitionResult(r);
             setSpeechScore(score);
@@ -152,15 +174,17 @@ function MeaningStep({ word, onNext }: { word: Word; onNext: () => void }) {
 }
 
 function PronunciationStep({
-  word, mode, onResult,
+  word, mode, onResult, onPermissionDenied,
 }: {
   word: Word;
-  mode: 'focused' | 'quiet';
+  mode: 'focused' | 'quiet' | 'reverse';
   onResult: (r: 'success' | 'failed' | 'skipped', score?: number) => void;
+  onPermissionDenied?: () => void;
 }) {
   const [phase, setPhase] = useState<'listening' | 'speaking' | 'analyzing' | 'done'>('listening');
   const [error, setError] = useState<string | null>(null);
   const [recogResult, setRecogResult] = useState<RecognitionResult | null>(null);
+  const [mismatchText, setMismatchText] = useState<string | null>(null);
   const firedRef = useRef(false);
 
   function safeOnResult(r: 'success' | 'failed' | 'skipped', score?: number) {
@@ -184,13 +208,14 @@ function PronunciationStep({
       return;
     }
     setError(null);
+    setMismatchText(null);
     setPhase('speaking');
     const r = await recognizeWord({ expectedWord: word.word });
 
     if (r.error === 'permission_denied') {
-      setError('마이크 권한이 필요해요. 브라우저 설정에서 허용 후 다시 시도해주세요.');
-      setPhase('done');
-      return; // 자동 진행 안 함 — 건너뛰기 버튼으로 직접 Skip
+      onPermissionDenied?.();
+      safeOnResult('skipped');
+      return;
     }
     if (r.error === 'unsupported') {
       setError('이 브라우저는 발음 인식을 지원하지 않아요');
@@ -213,9 +238,10 @@ function PronunciationStep({
         setError('말소리를 인식하지 못했어요. 다시 시도하거나 건너뛰기를 눌러주세요.');
         return;
       }
-      // 발음은 됐지만 단어 불일치 — 자동 진행 금지, 재시도 유도
+      // 발음은 됐지만 단어 불일치 — 교정 힌트 표시, 자동 진행 금지
       if (!r.result.matched) {
-        setError(`"${r.result.text}" 로 인식됐어요. 다시 시도하거나 건너뛰기를 눌러주세요.`);
+        if (r.result.text) setMismatchText(r.result.text);
+        setError('다시 시도하거나 건너뛰기를 눌러주세요.');
         return;
       }
       safeOnResult('success', r.result.score);
@@ -237,6 +263,11 @@ function PronunciationStep({
           <span className="text-2xl font-bold">{recogResult.score}점</span>
           <p className="text-sm text-gray-600">{recogResult.scoreLabel}</p>
         </div>
+      )}
+
+      {/* 발음 교정 힌트 — 불일치 시에만 표시 */}
+      {mismatchText && (
+        <PronunciationHint expected={word.word} recognized={mismatchText} />
       )}
 
       <div className="py-6">
@@ -310,7 +341,7 @@ function ScenariosStep({ word, onNext }: { word: Word; onNext: () => void }) {
             {CONTEXT_KO[s.context] ?? s.context}
           </div>
           <div className="text-base">"{s.example_en}"</div>
-          <div className="text-sm text-gray-600 mt-1">{s.example_ko}</div>
+          {s.example_ko && <div className="text-sm text-gray-600 mt-1">{s.example_ko}</div>}
         </div>
       ))}
       <button onClick={onNext} className="w-full rounded-xl bg-brand py-3 text-white font-medium mt-4">
@@ -406,6 +437,96 @@ function QuizStep({ word, onResult }: { word: Word; onResult: (correct: boolean)
           확인하고 다음으로
         </button>
       )}
+    </div>
+  );
+}
+
+function ReverseStep({ word, onResult }: { word: Word; onResult: (correct: boolean) => void }) {
+  const [input, setInput] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+
+  // 힌트: 한국어 예문 또는 뜻
+  const hint = word.scenarios[0]?.example_ko ?? word.meaning_ko;
+
+  function normalize(s: string) {
+    return s.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function submit() {
+    const correct = normalize(input) === normalize(word.word);
+    setIsCorrect(correct);
+    setSubmitted(true);
+    if (correct) setTimeout(() => onResult(true), 800);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-gray-500">역방향 학습 — 한국어 힌트로 영어 단어 맞추기</div>
+      <div className="rounded-xl bg-gray-50 p-4 text-base leading-relaxed">{hint}</div>
+      <p className="text-sm text-gray-600">위 힌트를 보고 영어 단어를 입력하세요</p>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && input && !submitted) submit(); }}
+        disabled={submitted}
+        placeholder="English word"
+        autoFocus
+        className="w-full rounded-xl border border-gray-300 px-4 py-3"
+      />
+      {!submitted && (
+        <>
+          <button
+            onClick={submit}
+            disabled={!input}
+            className="w-full rounded-xl bg-brand py-3 text-white font-medium disabled:bg-gray-400"
+          >
+            확인
+          </button>
+          <button onClick={() => onResult(false)} className="text-sm text-gray-500 underline w-full text-center">
+            모르겠어요
+          </button>
+        </>
+      )}
+      {submitted && isCorrect !== null && (
+        <p className={`text-sm font-medium ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+          {isCorrect ? '정답!' : `오답 — 정답: ${word.word}`}
+        </p>
+      )}
+      {submitted && isCorrect === false && (
+        <button
+          onClick={() => onResult(false)}
+          className="w-full rounded-xl bg-gray-500 py-3 text-white font-medium"
+        >
+          확인하고 다음으로
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PronunciationHint({ expected, recognized }: { expected: string; recognized: string }) {
+  const alignment = buildCharAlignment(expected, recognized);
+  return (
+    <div aria-live="polite" className="rounded-xl bg-orange-50 border border-orange-100 p-3 space-y-2 text-center">
+      <div className="text-xs text-gray-400">정답 vs 인식된 발음</div>
+      <div className="font-mono text-xl tracking-widest flex justify-center gap-0.5">
+        {alignment.map((p, i) => (
+          <span key={i} className={p.match ? 'text-green-600' : p.exp ? 'text-red-500' : 'text-gray-300'}>
+            {p.exp ?? '·'}
+          </span>
+        ))}
+      </div>
+      <div className="font-mono text-xl tracking-widest flex justify-center gap-0.5">
+        {alignment.map((p, i) => (
+          <span key={i} className={p.match ? 'text-green-600' : p.rec ? 'text-orange-500' : 'text-gray-300'}>
+            {p.rec ?? '·'}
+          </span>
+        ))}
+      </div>
+      <div className="text-xs text-gray-400 flex justify-between px-1">
+        <span>정답</span><span>인식</span>
+      </div>
     </div>
   );
 }

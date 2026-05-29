@@ -31,7 +31,8 @@ const WORD_TEXT: Word = {
   quiz: { blank_sentence: 'Try to _____ on your work.', answer: 'focus' },
 };
 
-/** 단어 카드의 모든 앞 단계를 거쳐 퀴즈 스텝까지 도달 */
+/** 단어 카드의 모든 앞 단계를 거쳐 퀴즈 스텝까지 도달
+ *  BASE_WORD는 phrasal_verbs=[], scenarios=[] 이므로 해당 스텝은 자동 스킵됨 */
 async function goToQuiz(word: Word, onComplete: ReturnType<typeof vi.fn>) {
   render(<WordCard word={word} mode="focused" onComplete={onComplete} />);
 
@@ -42,11 +43,7 @@ async function goToQuiz(word: Word, onComplete: ReturnType<typeof vi.fn>) {
   fireEvent.click(screen.getByText('🎤 발음하기'));
   await act(async () => { vi.advanceTimersByTime(1600); });
 
-  // phrasal step (빈 목록) → "실제 상황 보기"
-  fireEvent.click(screen.getByText('실제 상황 보기'));
-
-  // scenarios step (빈 목록) → "퀴즈"
-  fireEvent.click(screen.getByText('퀴즈'));
+  // phrasal/scenarios는 빈 배열이라 ORDER에 포함되지 않음 — 바로 quiz 스텝
 }
 
 describe('QuizStep — 사지선다', () => {

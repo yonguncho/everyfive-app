@@ -85,7 +85,12 @@ serve(async (req: Request) => {
       sent++;
     } catch (e) {
       const msg = (e as Error)?.message ?? 'unknown';
+      const statusCode = (e as any)?.statusCode ?? (e as any)?.status;
       console.error(JSON.stringify({ event: 'push_notification_failed', userId: (profile as any).id, error: msg }));
+      if (statusCode === 410) {
+        await admin.from('profiles').update({ push_subscription: null }).eq('id', (profile as any).id);
+        console.log(JSON.stringify({ event: 'push_subscription_expired_cleaned', userId: (profile as any).id }));
+      }
       failed++;
     }
   }

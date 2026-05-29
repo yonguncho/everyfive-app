@@ -116,6 +116,33 @@ describe('applyReview — quality < 3 처리', () => {
   });
 });
 
+describe('applyReview — BUG-02: 365일 캡', () => {
+  it('200일 구간에서 ease 곱 결과가 365일을 초과하지 않음', () => {
+    const prevState = {
+      intervalSeconds: 86400 * 200,
+      easeFactor: 2.5,
+      lapseCount: 0,
+      lastReviewAt: new Date('2026-01-01'),
+      nextDueAt: new Date('2026-07-20'),
+    };
+    const result = applyReview({ prevState, quality: 5, now: new Date('2026-07-20') });
+    expect(result.intervalSeconds).toBeLessThanOrEqual(86400 * 365);
+  });
+
+  it('이미 365일인 상태에서 추가 학습해도 365일 초과하지 않음', () => {
+    const prevState = {
+      intervalSeconds: 86400 * 365,
+      easeFactor: 2.5,
+      lapseCount: 0,
+      lastReviewAt: new Date('2026-01-01'),
+      nextDueAt: new Date('2027-01-01'),
+    };
+    const result = applyReview({ prevState, quality: 5, now: new Date('2027-01-01') });
+    expect(result.intervalSeconds).toBeLessThanOrEqual(86400 * 365);
+    expect(result.intervalSeconds).toBe(86400 * 365);
+  });
+});
+
 describe('applyReview — quality 5 처리', () => {
   it('quality 5: easeFactor += 0.1 (quality 4 대비 +0.1 추가)', () => {
     const prevState = {

@@ -5,7 +5,8 @@ import WordCard, { type Word } from '@/components/learning/WordCard';
 import { createClient } from '@/lib/supabase/client';
 import { startSyncLoop, stopSyncLoop, trackEvent } from '@/lib/sync/syncClient';
 import { deriveQuality } from '@/lib/srs/sm2Algorithm';
-import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates, buildBlankSentence } from '@/lib/daily/dailyQueue';
+import { SAMPLE_WORDS, fetchDailyQueue, resolveWordsByIds, fisherYates, buildBlankSentence, getDifficultyFilter } from '@/lib/daily/dailyQueue';
+import { checkAndAwardBadges } from '@/lib/badges/checkBadges';
 
 
 async function fetchDailyWords(
@@ -19,11 +20,13 @@ async function fetchDailyWords(
   // CDN 제거 → Supabase words 테이블에서 직접 조회
   let pool: Word[];
   try {
+    const difficulty = getDifficultyFilter(level);
     const { data: rows, error } = await supabase
       .from('words')
       .select('*')
+      .in('difficulty', difficulty)
       .order('word_id')
-      .limit(Math.min(count * 40, 300));
+      .limit(count * 3);
 
     if (error || !rows || rows.length === 0) throw new Error('no words');
     pool = rows.map((r: any): Word => ({
@@ -38,13 +41,13 @@ async function fetchDailyWords(
       ipa: '',
       phrasal_verbs: [],
       scenarios: r.example_sentence
-        ? [{ context: 'example', example_en: r.example_sentence, example_ko: '' }]
+        ? [{ context: 'example', example_en: r.example_sentence, example_ko: r.example_sentence_ko ?? '' }]
         : [],
       quiz: { blank_sentence: buildBlankSentence(r.word, r.example_sentence), answer: r.word },
     }));
   } catch (e) {
     console.warn(JSON.stringify({ event: 'fetch_daily_words_failed', error: (e as Error)?.message }));
-    pool = SAMPLE_WORDS;
+    pool = fisherYates([...SAMPLE_WORDS], seed);
   }
 
   // SM-2 due_date 기반 복습 단어 우선 선정
@@ -65,7 +68,7 @@ async function fetchDailyWords(
   return result.length > 0 ? result : fisherYates(SAMPLE_WORDS, seed).slice(0, count);
 }
 
-type Mode = 'focused' | 'quiet';
+type Mode = 'focused' | 'quiet' | 'reverse';
 
 export default function DailyPage() {
   const [sessionSeed, setSessionSeed] = useState<number>(
@@ -80,6 +83,12 @@ export default function DailyPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [words, setWords] = useState<Word[]>(SAMPLE_WORDS);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<string | null>(null);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  }
 
   useEffect(() => {
     (async () => {
@@ -148,7 +157,7 @@ export default function DailyPage() {
           recognition: result.recognitionResult,
           quiz_correct: result.quizCorrect,
           quality: deriveQuality({
-            mode,
+            mode: mode === 'reverse' ? 'quiet' : mode,
             speechRecognized: result.recognitionResult === 'success' ? true : result.recognitionResult === 'skipped' ? null : false,
             quizCorrect: result.quizCorrect,
             speechScore: result.speechScore,
@@ -159,6 +168,18 @@ export default function DailyPage() {
     if (idx + 1 >= words.length) {
       if (userId) {
         await trackEvent({ user_id: userId, event_type: 'session_end', payload: { mode, completed: words.length } });
+        // 배지 체크: 프로필에서 streak + 총 학습 단어 수 조회 후 배지 수여
+        const supabase = createClient();
+        const [profileSnap, wordCountSnap] = await Promise.allSettled([
+          supabase.from('profiles').select('current_streak').eq('id', userId).single(),
+          supabase.from('user_word_state').select('word_id', { count: 'exact', head: true }).eq('user_id', userId),
+        ]);
+        const streak = profileSnap.status === 'fulfilled' ? (profileSnap.value.data?.current_streak ?? 0) : 0;
+        const totalWords = wordCountSnap.status === 'fulfilled' ? (wordCountSnap.value.count ?? 0) : 0;
+        const awarded = await checkAndAwardBadges(supabase, userId, streak, totalWords);
+        if (awarded.length > 0) {
+          showToast(`배지 획득! ${awarded.map(b => b.icon + ' ' + b.name).join(', ')}`);
+        }
       }
       setDone(true);
     } else {
@@ -198,10 +219,10 @@ export default function DailyPage() {
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm text-gray-500">{idx + 1} / {words.length}</span>
         <button
-          onClick={() => setMode(mode === 'focused' ? 'quiet' : 'focused')}
+          onClick={() => setMode(mode === 'focused' ? 'quiet' : mode === 'quiet' ? 'reverse' : 'focused')}
           className="text-xs rounded-full bg-gray-100 px-3 py-1.5"
         >
-          {mode === 'focused' ? '🔊 집중' : '🤫 조용한'}
+          {mode === 'focused' ? '🔊 집중' : mode === 'quiet' ? '🤫 조용한' : '🔄 역방향'}
         </button>
       </div>
 
@@ -210,7 +231,19 @@ export default function DailyPage() {
         word={words[idx]}
         mode={mode}
         onComplete={onWordComplete}
+        onPermissionDenied={() => {
+          setMode('quiet');
+          showToast('마이크 사용 불가 — 조용한 모드로 전환했습니다');
+        }}
       />
+
+      {toast && (
+        <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-50 pointer-events-none">
+          <div className="bg-gray-800 text-white text-sm px-4 py-3 rounded-xl shadow-lg">
+            {toast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

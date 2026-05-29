@@ -86,12 +86,12 @@ export function applyReview(input: ReviewInput): SrsState {
   };
 }
 
+const MAX_INTERVAL_SECONDS = 86400 * 365;
+
 function nextInterval(currentSeconds: number, ease: number): number {
-  // 사다리 위 인덱스 찾기
   const idx = INTERVAL_LADDER_SECONDS.findIndex((s) => s > currentSeconds);
   if (idx === -1) {
-    // 60d+ 구간: ease 곱하기
-    return Math.round(currentSeconds * ease);
+    return Math.min(Math.round(currentSeconds * ease), MAX_INTERVAL_SECONDS);
   }
   return INTERVAL_LADDER_SECONDS[idx];
 }

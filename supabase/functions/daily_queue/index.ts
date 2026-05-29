@@ -50,13 +50,15 @@ const SAMPLE_WORD_IDS = [
 ];
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = origin && ALLOWED_ORIGIN && origin === ALLOWED_ORIGIN ? origin : '';
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'authorization, content-type',
     'Vary': 'Origin',
   };
+  if (origin && ALLOWED_ORIGIN && origin === ALLOWED_ORIGIN) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
 }
 
 async function verifyJwtAndGetUserId(authHeader: string): Promise<string | null> {
@@ -264,6 +266,9 @@ serve(async (req: Request) => {
 
     const dueIds: string[] = (dueStates ?? []).map((s: any) => s.word_id as string);
 
+    // 9-pre. seed 먼저 계산 — 보충 블록(step 8)과 최종 셔플(step 9) 양쪽에서 사용
+    const seed = computeSeed(userId, targetDate);
+
     // 8. 부족 시 보충 — words 테이블에서 미학습 신규 단어 선택
     //    미학습 = user_word_state에 아예 없는 단어 (due가 아닌 학습 중 단어도 제외)
     let wordIds: string[] = [...dueIds];
@@ -307,8 +312,7 @@ serve(async (req: Request) => {
 
     wordIds = wordIds.slice(0, queueSize);
 
-    // 9. FNV-32a seed + Fisher-Yates 셔플
-    const seed = computeSeed(userId, targetDate);
+    // 9. Fisher-Yates 셔플 (seed는 step 8 이전에 선언됨)
     const shuffled = fisherYates(wordIds, seed);
 
     // 10. daily_queue UPSERT

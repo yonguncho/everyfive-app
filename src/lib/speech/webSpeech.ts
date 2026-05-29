@@ -214,6 +214,48 @@ function singleAttempt(
   });
 }
 
+/**
+ * 두 영단어(expected vs recognized)를 문자 단위로 정렬해 반환.
+ * Levenshtein edit path를 역추적해 (exp, rec, match) 쌍을 만든다.
+ */
+export function buildCharAlignment(
+  expected: string,
+  recognized: string,
+): Array<{ exp: string | null; rec: string | null; match: boolean }> {
+  const a = expected.toLowerCase().replace(/[^a-z]/g, '');
+  const b = recognized.toLowerCase().replace(/[^a-z]/g, '');
+  const m = a.length, n = b.length;
+
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+      else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+
+  const result: Array<{ exp: string | null; rec: string | null; match: boolean }> = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+      result.unshift({ exp: a[i - 1], rec: b[j - 1], match: true });
+      i--; j--;
+    } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) {
+      result.unshift({ exp: a[i - 1], rec: b[j - 1], match: false });
+      i--; j--;
+    } else if (j > 0 && dp[i][j] === dp[i][j - 1] + 1) {
+      result.unshift({ exp: null, rec: b[j - 1], match: false });
+      j--;
+    } else {
+      result.unshift({ exp: a[i - 1], rec: null, match: false });
+      i--;
+    }
+  }
+  return result;
+}
+
 /** TTS — 클라이언트 합성, 음성 데이터 저장 X */
 export function speak(text: string, lang = 'en-US'): Promise<void> {
   return new Promise((resolve) => {
