@@ -5,6 +5,16 @@ import { cookies } from 'next/headers';
 
 const MAX_BODY_BYTES = 2048;
 
+// 승인된 Web Push 서비스 hostname suffix allowlist (positive guard)
+// Chrome/Edge → *.googleapis.com, Firefox → *.push.services.mozilla.com,
+// Safari → web.push.apple.com, Windows WNS → *.notify.windows.com
+const ALLOWED_PUSH_HOST_SUFFIXES = [
+  '.googleapis.com',
+  '.push.services.mozilla.com',
+  '.push.apple.com',
+  '.notify.windows.com',
+];
+
 // RFC1918 / loopback / link-local 차단 (SSRF 방지)
 const PRIVATE_IP_PATTERN = new RegExp(
   '^(' +
@@ -39,6 +49,14 @@ function validatePushEndpoint(endpoint: string): { ok: false; reason: string } |
   const hostname = parsed.hostname.replace(/\.$/, '').toLowerCase();
   if (PRIVATE_IP_PATTERN.test(hostname)) {
     return { ok: false, reason: 'private_ip_not_allowed' };
+  }
+
+  // Positive allowlist: 승인된 Web Push 서비스만 허용
+  const isAllowed = ALLOWED_PUSH_HOST_SUFFIXES.some(
+    (suffix) => hostname.endsWith(suffix) || hostname === suffix.slice(1)
+  );
+  if (!isAllowed) {
+    return { ok: false, reason: 'endpoint_host_not_allowed' };
   }
 
   return { ok: true };

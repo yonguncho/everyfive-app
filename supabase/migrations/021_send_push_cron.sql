@@ -8,6 +8,20 @@
 --      supabase secrets set CRON_SECRET=<CRON_SECRET값>
 -- 설정 전에는 cron 실행 시 401로 실패 (silent fail 아님).
 
+-- app.cron_secret GUC 사전 검증: 미설정 시 migration 자체를 실패시켜 silent fail 방지
+DO $$
+DECLARE v_secret TEXT;
+BEGIN
+  v_secret := current_setting('app.cron_secret', true);
+  IF v_secret IS NULL OR v_secret = '' THEN
+    RAISE EXCEPTION
+      'app.cron_secret GUC is not set. '
+      'Run 022_set_db_settings.sql instructions first: '
+      'ALTER DATABASE postgres SET "app.cron_secret" = ''<your-secret>''; '
+      'SELECT pg_reload_conf();';
+  END IF;
+END $$;
+
 -- 기존 스케줄 제거 (없으면 무시)
 DO $$ BEGIN
   PERFORM cron.unschedule('send-push-notification');

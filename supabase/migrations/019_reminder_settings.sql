@@ -14,6 +14,9 @@ CREATE POLICY profiles_update_own ON profiles
   USING (id = auth.uid())
   WITH CHECK (id = auth.uid());
 
--- push_subscription은 /api/push-subscribe (service_role)만 쓸 수 있어야 함
--- authenticated가 직접 endpoint를 조작하면 send-push-notification에서 SSRF 발생 가능
-REVOKE UPDATE (push_subscription) ON profiles FROM authenticated;
+-- push_subscription은 /api/push-subscribe (service_role)만 쓸 수 있어야 함.
+-- Supabase 기본 설정(GRANT ALL ON ALL TABLES)으로 authenticated가 table-level UPDATE 보유 →
+-- column-level REVOKE만으로는 차단 불충분. table-level UPDATE를 제거하고
+-- 사용자가 직접 수정 가능한 컬럼만 column-level GRANT로 재부여한다.
+REVOKE UPDATE ON profiles FROM authenticated;
+GRANT UPDATE(level, track, last_level_test_at, reminder_email_enabled) ON profiles TO authenticated;
