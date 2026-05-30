@@ -10,8 +10,8 @@ const LS_KEY = process.env.LEMON_SQUEEZY_API_KEY!;
 
 const PLAN_VARIANT_IDS: Record<string, string> = {
   pro_10: process.env.LEMON_SQUEEZY_VARIANT_PRO_10 ?? '',
-  pro_20: process.env.LEMON_SQUEEZY_VARIANT_PRO_20 ?? '',
-  pro_30: process.env.LEMON_SQUEEZY_VARIANT_PRO_30 ?? '',
+  pro_15: process.env.LEMON_SQUEEZY_VARIANT_PRO_20 ?? '', // LS $20 variant → 15단어 플랜
+  pro_20: process.env.LEMON_SQUEEZY_VARIANT_PRO_30 ?? '', // LS $30 variant → 20단어 플랜
 };
 
 export async function POST(req: NextRequest) {

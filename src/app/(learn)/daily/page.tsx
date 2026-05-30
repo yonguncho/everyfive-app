@@ -135,7 +135,7 @@ export default function DailyPage() {
 
       const activeStatuses = ['ACTIVE', 'TRIAL', 'CANCELED_AT_PERIOD_END', 'PAST_DUE'];
       const plan = (sub && activeStatuses.includes(sub.status)) ? sub.plan : 'free';
-      const wordCount = plan === 'pro_30' ? 30 : plan === 'pro_20' ? 20 : plan === 'pro_10' ? 10 : 5;
+      const wordCount = plan === 'pro_20' ? 20 : plan === 'pro_15' ? 15 : plan === 'pro_10' ? 10 : 5;
 
       const queue = await fetchDailyQueue(supabase);
       // 세션마다 다른 표시 순서를 위해 랜덤 컴포넌트 사용

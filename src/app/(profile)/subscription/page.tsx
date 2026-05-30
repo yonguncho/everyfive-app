@@ -13,10 +13,10 @@ interface Sub {
 }
 
 const PLAN_LABELS: Record<string, { name: string; words: number; price: string }> = {
-  free:   { name: '무료',      words: 5,  price: '₩0' },
-  pro_10: { name: 'Pro 10',   words: 10, price: '₩4,900/월' },
-  pro_20: { name: 'Pro 20',   words: 20, price: '₩7,900/월' },
-  pro_30: { name: 'Pro 30',   words: 30, price: '₩9,900/월' },
+  free:   { name: '무료',      words: 5,  price: '$0' },
+  pro_10: { name: 'Pro 10',   words: 10, price: '$9.99/월' },
+  pro_15: { name: 'Pro 15',   words: 15, price: '$12.99/월' },
+  pro_20: { name: 'Pro 20',   words: 20, price: '$15.99/월' },
 };
 
 const STATUS_KO: Record<string, string> = {
@@ -119,7 +119,7 @@ function SubscriptionContent() {
       {!isActive && (
         <>
           <div className="text-sm font-semibold text-gray-700 pt-2">업그레이드</div>
-          {(['pro_10', 'pro_20', 'pro_30'] as const).map((plan) => {
+          {(['pro_10', 'pro_15', 'pro_20'] as const).map((plan) => {
             const info = PLAN_LABELS[plan];
             return (
               <button
