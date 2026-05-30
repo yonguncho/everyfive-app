@@ -158,10 +158,7 @@ function MeaningStep({ word, onNext }: { word: Word; onNext: () => void }) {
         </div>
       )}
       <h2 className="text-4xl font-bold">{word.word}</h2>
-      <div className="text-sm text-gray-500">{word.ipa}</div>
-      {word.pronunciation_ko && (
-        <div className="text-sm text-gray-400">[{word.pronunciation_ko}]</div>
-      )}
+      {word.ipa && <div className="text-sm text-gray-500">{word.ipa}</div>}
       <div className="text-lg text-gray-800 pt-2">{word.meaning_ko}</div>
       <button
         onClick={onNext}
@@ -269,10 +266,7 @@ function PronunciationStep({
     <div className="space-y-4 text-center">
       <div className="text-xs text-gray-500">발음</div>
       <h2 className="text-3xl font-bold">{word.word}</h2>
-      <div className="text-sm text-gray-500">{word.ipa}</div>
-      {word.pronunciation_ko && (
-        <div className="text-sm text-gray-400">[{word.pronunciation_ko}]</div>
-      )}
+      {word.ipa && <div className="text-sm text-gray-500">{word.ipa}</div>}
 
       {/* 발음 성공 피드백 */}
       {phase === 'success' && (
