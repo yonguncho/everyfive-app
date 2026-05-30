@@ -182,6 +182,7 @@ function PronunciationStep({
   const [error, setError] = useState<string | null>(null);
   const [recogResult, setRecogResult] = useState<RecognitionResult | null>(null);
   const [mismatchText, setMismatchText] = useState<string | null>(null);
+  const [interimText, setInterimText] = useState('');
   const firedRef = useRef(false);
 
   function safeOnResult(r: 'success' | 'failed' | 'skipped', score?: number) {
@@ -207,7 +208,11 @@ function PronunciationStep({
     setError(null);
     setMismatchText(null);
     setPhase('speaking');
-    const r = await recognizeWord({ expectedWord: word.word });
+    setInterimText('');
+    const r = await recognizeWord({
+      expectedWord: word.word,
+      onInterimResult: (t) => setInterimText(t),
+    });
 
     if (r.error === 'permission_denied') {
       onPermissionDenied?.();
@@ -309,10 +314,13 @@ function PronunciationStep({
             disabled={phase === 'speaking' || phase === 'analyzing'}
             className="w-full rounded-xl bg-brand py-3 text-white font-medium disabled:bg-gray-400"
           >
-            {phase === 'speaking' && '듣는 중... 말해주세요'}
+            {phase === 'speaking' && '🎤 듣는 중... 말해주세요'}
             {phase === 'analyzing' && '분석 중...'}
             {(phase === 'listening' || phase === 'done') && '🎤 발음하기'}
           </button>
+          {phase === 'speaking' && interimText && (
+            <p className="text-sm text-gray-500 text-center">"{interimText}"</p>
+          )}
           <button onClick={() => safeOnResult('skipped')} className="text-sm text-gray-500 underline">
             건너뛰기
           </button>

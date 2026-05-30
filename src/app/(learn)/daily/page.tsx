@@ -138,15 +138,19 @@ export default function DailyPage() {
       const wordCount = plan === 'pro_30' ? 30 : plan === 'pro_20' ? 20 : plan === 'pro_10' ? 10 : 5;
 
       const queue = await fetchDailyQueue(supabase);
+      // 세션마다 다른 표시 순서를 위해 랜덤 컴포넌트 사용
+      const randomPart = Math.floor(Math.random() * 0xffffffff) >>> 0;
       if (queue && queue.wordIds.length > 0) {
         const fetched = await resolveWordsByIds(queue.wordIds, supabase);
-        setWords(fetched);
-        setSessionSeed(queue.sessionSeed);
+        const displaySeed = (queue.sessionSeed ^ randomPart) >>> 0;
+        setWords(fisherYates([...fetched], displaySeed));
+        setSessionSeed(displaySeed);
       } else {
         const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const deterministicSeed = computeSeed(user.id, todayKst);
-        setSessionSeed(deterministicSeed);
-        const fetched = await fetchDailyWords(supabase, user.id, level, track, wordCount, deterministicSeed);
+        const baseSeed = computeSeed(user.id, todayKst);
+        const sessionSeed = (baseSeed ^ randomPart) >>> 0;
+        setSessionSeed(sessionSeed);
+        const fetched = await fetchDailyWords(supabase, user.id, level, track, wordCount, sessionSeed);
         setWords(fetched);
       }
 

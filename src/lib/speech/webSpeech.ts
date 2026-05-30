@@ -94,6 +94,7 @@ interface RecognizerOptions {
   maxAttempts?: number;
   attemptTimeoutMs?: number;
   lang?: string;
+  onInterimResult?: (text: string) => void;
 }
 
 export async function recognizeWord(
@@ -101,21 +102,25 @@ export async function recognizeWord(
 ): Promise<{ result?: RecognitionResult; error?: RecognitionError }> {
   if (!isSupported()) return { error: 'unsupported' };
 
-  const { expectedWord, maxAttempts = 3, attemptTimeoutMs = 5000, lang = 'en-US' } = opts;
+  const { expectedWord, maxAttempts = 3, attemptTimeoutMs = 5000, lang = 'en-US', onInterimResult } = opts;
   const SpeechRecognition =
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
   const expected = expectedWord.toLowerCase().replace(/[^a-z0-9]/g, '');
   const startedAt = performance.now();
   let attempts = 0;
+  let lastText = '';
+  let lastConfidence: number | undefined;
 
   for (attempts = 1; attempts <= maxAttempts; attempts++) {
-    const attempt = await singleAttempt(SpeechRecognition, lang, attemptTimeoutMs);
+    const attempt = await singleAttempt(SpeechRecognition, lang, attemptTimeoutMs, onInterimResult);
     if (attempt.error === 'permission_denied') return { error: 'permission_denied' };
     if (attempt.error === 'aborted') return { error: 'aborted' };
     if (attempt.error === 'audio_capture') return { error: 'audio_capture' };
 
     if (attempt.text) {
+      lastText = attempt.text;
+      lastConfidence = attempt.confidence;
       const normalized = attempt.text.toLowerCase().replace(/[^a-z0-9]/g, '');
       const matched = normalized.includes(expected);
 
@@ -127,7 +132,6 @@ export async function recognizeWord(
           durationMs: performance.now() - startedAt,
         };
 
-        // confidence 지원 시 점수 계산
         if (attempt.confidence !== undefined) {
           base.confidence = attempt.confidence;
           const { score, scoreLabel } = computePronounceScore(
@@ -144,26 +148,33 @@ export async function recognizeWord(
     }
   }
 
-  return {
-    result: {
-      text: '',
-      matched: false,
-      attempts,
-      durationMs: performance.now() - startedAt,
-    },
+  // 불일치 시에도 마지막으로 인식된 발음의 점수를 포함해 피드백 제공
+  const failResult: RecognitionResult = {
+    text: lastText,
+    matched: false,
+    attempts,
+    durationMs: performance.now() - startedAt,
   };
+  if (lastText && lastConfidence !== undefined) {
+    failResult.confidence = lastConfidence;
+    const { score, scoreLabel } = computePronounceScore(lastConfidence, lastText, expectedWord);
+    failResult.score = score;
+    failResult.scoreLabel = scoreLabel;
+  }
+  return { result: failResult };
 }
 
 function singleAttempt(
   SR: any,
   lang: string,
   timeoutMs: number,
+  onInterim?: (text: string) => void,
 ): Promise<{ text?: string; confidence?: number; error?: RecognitionError }> {
   return new Promise((resolve) => {
     const r = new SR();
     r.lang = lang;
     r.continuous = false;
-    r.interimResults = false;
+    r.interimResults = onInterim !== undefined;
     r.maxAlternatives = 1;
 
     let done = false;
@@ -176,9 +187,14 @@ function singleAttempt(
 
     r.onresult = (ev: any) => {
       if (done) return;
+      const isFinal = ev.results[0]?.isFinal ?? true;
+      const text = ev.results[0]?.[0]?.transcript ?? '';
+      if (!isFinal) {
+        onInterim?.(text);
+        return;
+      }
       done = true;
       clearTimeout(timer);
-      const text = ev.results[0]?.[0]?.transcript ?? '';
       const confidence: number | undefined = ev.results[0]?.[0]?.confidence;
       resolve({ text, confidence });
     };
