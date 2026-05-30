@@ -49,12 +49,13 @@ async function fetchDailyWords(
       difficulty: r.difficulty,
       category: r.category,
       meaning_ko: r.definition_ko,
-      ipa: '',
+      ipa: r.ipa ?? '',
+      pronunciation_ko: r.pronunciation_ko ?? undefined,
       phrasal_verbs: [],
       scenarios: r.example_sentence
         ? [{ context: 'example', example_en: r.example_sentence, example_ko: r.example_sentence_ko ?? '' }]
         : [],
-      quiz: { blank_sentence: buildBlankSentence(r.word, r.example_sentence), answer: r.word },
+      quiz: { blank_sentence: buildBlankSentence(r.word, r.example_sentence, r.definition_ko), answer: r.word },
     }));
   } catch (e) {
     console.warn(JSON.stringify({ event: 'fetch_daily_words_failed', error: (e as Error)?.message }));
