@@ -16,3 +16,4 @@ __pycache__/
 tsconfig.tsbuildinfo
 
 .vercel
+.env*.local
