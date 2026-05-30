@@ -3,6 +3,11 @@ import Link from 'next/link';
 export default function LandingPage() {
   return (
     <div className="space-y-6 py-12">
+      {/* 텍스트 로고 */}
+      <div className="mb-2">
+        <span className="text-3xl font-black tracking-tight text-gray-900">Every</span><span className="text-3xl font-black tracking-tight text-brand">Five</span>
+      </div>
+
       <h1 className="text-4xl font-bold leading-tight">
         매일 5단어,<br />
         <span className="text-brand">평생 무료.</span>
