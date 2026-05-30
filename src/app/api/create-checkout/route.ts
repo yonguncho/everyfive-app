@@ -15,13 +15,6 @@ const PLAN_VARIANT_IDS: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
-  // CSRF 방어: Origin 헤더가 있으면 앱 URL과 일치해야 함 (브라우저 cross-site POST 차단)
-  const reqOrigin = req.headers.get('origin');
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (reqOrigin && appUrl && reqOrigin !== appUrl) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  }
-
   if (!LS_KEY || !process.env.LEMON_SQUEEZY_STORE_ID) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
@@ -74,15 +67,9 @@ export async function POST(req: NextRequest) {
   }
 
   // A2: req.url origin은 프록시 헤더 조작 가능 — 환경변수만 사용 (fallback 없음)
-  // https 프로토콜 강제: 잘못된 env 설정으로 http:// redirect URL이 LS에 전달되는 것을 방지
-  const rawOrigin = process.env.NEXT_PUBLIC_APP_URL;
-  const isValidOrigin = rawOrigin &&
-    (rawOrigin.startsWith('https://') || (process.env.NODE_ENV === 'development' && rawOrigin.startsWith('http://')));
-  if (!isValidOrigin) {
-    console.error(JSON.stringify({ event: 'checkout_misconfigured', reason: 'NEXT_PUBLIC_APP_URL missing or non-https' }));
-    return NextResponse.json({ error: 'service_misconfigured' }, { status: 500 });
-  }
-  const origin = rawOrigin;
+  // redirect URL: NEXT_PUBLIC_APP_URL 우선, 없으면 요청 URL origin 사용
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const origin = appUrl || new URL(req.url).origin;
   const storeId = process.env.LEMON_SQUEEZY_STORE_ID!;
 
   const ctrl = new AbortController();
