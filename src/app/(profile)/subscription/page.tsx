@@ -56,7 +56,17 @@ function SubscriptionContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error === 'already_subscribed' ? '이미 구독 중입니다.' : '결제 오류가 발생했습니다.');
+        const code = data?.error ?? `HTTP ${res.status}`;
+        setError(
+          code === 'already_subscribed'      ? '이미 구독 중입니다.' :
+          code === 'service_misconfigured'   ? '서버 설정 오류 — 관리자에게 문의해주세요. (service_misconfigured)' :
+          code === 'service_unavailable'     ? '결제 서비스를 일시적으로 사용할 수 없습니다. (service_unavailable)' :
+          code === 'invalid_plan'            ? '유효하지 않은 플랜입니다. (invalid_plan)' :
+          code === 'checkout_in_progress'    ? '이미 결제가 진행 중입니다. 잠시 후 다시 시도해 주세요.' :
+          code === 'checkout_create_failed'  ? `결제 세션 생성 실패. 다시 시도해 주세요. (checkout_create_failed)` :
+          code === 'checkout_timeout'        ? '결제 서버 응답 시간 초과. 다시 시도해 주세요.' :
+          `결제 오류가 발생했습니다. (${code})`
+        );
         return;
       }
       window.location.href = data.url;
