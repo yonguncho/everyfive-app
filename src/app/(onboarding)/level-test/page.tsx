@@ -80,6 +80,7 @@ export default function LevelTestPage() {
   const [step, setStep] = useState<'intro' | 'quiz' | 'done'>('intro');
   const [idx, setIdx] = useState(0);
   const [score, setScore] = useState(0);
+  const [userAnswers, setUserAnswers] = useState<string[]>([]);
   const [remaining, setRemaining] = useState(60);
   const [submitting, setSubmitting] = useState(false);
 
@@ -101,8 +102,8 @@ export default function LevelTestPage() {
 
   function selectAnswer(option: string) {
     const correct = option === questions[idx].answer;
-    const newScore = score + (correct ? 1 : 0);
-    setScore(newScore);
+    setScore((s) => s + (correct ? 1 : 0));
+    setUserAnswers((prev) => [...prev, option]);
     if (idx + 1 >= questions.length) {
       setStep('done');
     } else {
@@ -158,18 +159,44 @@ export default function LevelTestPage() {
 
   if (step === 'done') {
     const level = LEVEL_MAP[score];
+    const wrongItems = questions
+      .map((q, i) => ({ q, chosen: userAnswers[i] ?? '(미응답)', correct: q.answer }))
+      .filter(({ chosen, correct }) => chosen !== correct);
+
     return (
-      <div className="space-y-6 py-12 text-center">
-        <h1 className="text-2xl font-bold">결과</h1>
-        <p className="text-5xl font-bold text-brand">{level}</p>
-        <p className="text-gray-700">{score} / {questions.length} 정답</p>
-        <p className="text-sm text-gray-500">
-          {level === 'A1' && '기초 — 천천히 시작해요'}
-          {level === 'A2' && '초중급 — 일상 표현부터'}
-          {level === 'B1' && '중급 — 실용 표현 중심'}
-          {level === 'B2' && '중상급 — 상황별 표현'}
-          {level === 'C1' && '고급 — 미묘한 뉘앙스까지'}
-        </p>
+      <div className="space-y-6 py-12">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold">결과</h1>
+          <p className="text-5xl font-bold text-brand">{level}</p>
+          <p className="text-gray-700">{score} / {questions.length} 정답</p>
+          <p className="text-sm text-gray-500">
+            {level === 'A1' && '기초 — 천천히 시작해요'}
+            {level === 'A2' && '초중급 — 일상 표현부터'}
+            {level === 'B1' && '중급 — 실용 표현 중심'}
+            {level === 'B2' && '중상급 — 상황별 표현'}
+            {level === 'C1' && '고급 — 미묘한 뉘앙스까지'}
+          </p>
+        </div>
+
+        {wrongItems.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-500">틀린 문제 ({wrongItems.length}개)</h2>
+            {wrongItems.map(({ q, chosen, correct }, i) => (
+              <div key={i} className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2">
+                <p className="text-sm font-medium text-gray-800">{q.prompt}</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="shrink-0 text-red-500 font-medium">내 답</span>
+                  <span className="rounded-lg bg-red-50 border border-red-200 px-2 py-0.5 text-red-700">{chosen}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="shrink-0 text-green-600 font-medium">정답</span>
+                  <span className="rounded-lg bg-green-50 border border-green-200 px-2 py-0.5 text-green-700">{correct}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={finishAndSaveLevel}
           disabled={submitting}
