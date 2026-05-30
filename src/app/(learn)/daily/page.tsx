@@ -96,6 +96,7 @@ export default function DailyPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [currentLevel, setCurrentLevel] = useState<string>('A1');
+  const [dueCount, setDueCount] = useState(0);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -219,6 +220,14 @@ export default function DailyPage() {
           setCurrentLevel(targetLevel);
           showToast(`레벨 업! ${currentLevel} → ${targetLevel}`);
         }
+
+        // 복습 due 단어 수 조회
+        const { count: due } = await supabase
+          .from('user_word_state')
+          .select('word_id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .lte('next_due_at', new Date().toISOString());
+        setDueCount(due ?? 0);
       }
       setDone(true);
     } else {
@@ -249,6 +258,15 @@ export default function DailyPage() {
         <h1 className="text-2xl font-bold">오늘의 {words.length}단어 완료!</h1>
         <p className="text-gray-700">내일 같은 시간에 다시 만나요.</p>
         <a href="/progress" className="block text-brand underline">진행도 보기</a>
+        {dueCount > 0 && (
+          <a
+            href="/review"
+            className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-indigo-50 border border-indigo-100 px-5 py-3 text-sm font-semibold text-indigo-700"
+          >
+            <span>🔔</span>
+            <span>복습 {dueCount}개 남았어요 → 지금 복습</span>
+          </a>
+        )}
         {toast && (
           <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-50 pointer-events-none">
             <div className="bg-gray-800 text-white text-sm px-4 py-3 rounded-xl shadow-lg">

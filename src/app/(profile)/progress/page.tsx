@@ -16,6 +16,7 @@ interface Stats {
   level: string;
   track: string;
   totalLearned: number;
+  dueNow: number;
   recentDays: { date: string; new_words_completed: number; reviews_completed: number }[];
   upcomingReviews: { date: string; count: number }[];
   earnedBadges: Badge[];
@@ -35,7 +36,7 @@ export default function ProgressPage() {
       const sevenDaysLater = new Date(now);
       sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
-      const [profileRes, dailyStatsRes, wordStateRes, upcomingRes, badgesRes] = await Promise.allSettled([
+      const [profileRes, dailyStatsRes, wordStateRes, upcomingRes, badgesRes, dueNowRes] = await Promise.allSettled([
         supabase.from('profiles').select('current_streak, level, track').eq('id', user.id).single(),
         supabase.from('daily_stats').select('date, new_words_completed, reviews_completed')
           .eq('user_id', user.id).order('date', { ascending: false }).limit(7),
@@ -48,6 +49,9 @@ export default function ProgressPage() {
           .select('badge_id, earned_at, badges(name, icon)')
           .eq('user_id', user.id)
           .order('earned_at', { ascending: false }),
+        supabase.from('user_word_state').select('word_id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .lte('next_due_at', now.toISOString()),
       ]);
 
       const profileData = profileRes.status === 'fulfilled' ? profileRes.value.data : null;
@@ -55,6 +59,7 @@ export default function ProgressPage() {
       const wordStateData = wordStateRes.status === 'fulfilled' ? wordStateRes.value : null;
       const upcomingData = upcomingRes.status === 'fulfilled' ? upcomingRes.value.data : null;
       const badgesData = badgesRes.status === 'fulfilled' ? badgesRes.value.data : [];
+      const dueNowCount = dueNowRes.status === 'fulfilled' ? (dueNowRes.value.count ?? 0) : 0;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const earnedBadges: Badge[] = (badgesData ?? []).map((b: any) => ({
         badge_id: b.badge_id,
@@ -81,6 +86,7 @@ export default function ProgressPage() {
         level: profileData?.level ?? 'A1',
         track: profileData?.track ?? 'daily',
         totalLearned: wordStateData?.count ?? 0,
+        dueNow: dueNowCount,
         recentDays: dailyStatsData ?? [],
         upcomingReviews,
         earnedBadges,
@@ -101,6 +107,22 @@ export default function ProgressPage() {
   return (
     <div className="space-y-4 py-6">
       <h1 className="text-2xl font-bold">진행도</h1>
+
+      {/* 복습 due 배너 */}
+      {stats.dueNow > 0 && (
+        <a
+          href="/review"
+          className="flex items-center justify-between rounded-2xl bg-indigo-50 border border-indigo-100 px-4 py-3"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🔔</span>
+            <span className="text-sm font-semibold text-indigo-700">
+              복습할 단어 {stats.dueNow}개
+            </span>
+          </div>
+          <span className="text-xs font-medium text-indigo-500">지금 복습 →</span>
+        </a>
+      )}
 
       {/* 핵심 지표 3개 */}
       <div className="grid grid-cols-3 gap-3">
