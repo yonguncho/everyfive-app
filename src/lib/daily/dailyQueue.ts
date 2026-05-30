@@ -20,7 +20,41 @@ export function buildBlankSentence(word: string, exampleSentence?: string | null
     return null;
   }
 
-  return tryReplace(baseWord) ?? tryReplace(word) ?? `${hint}를 영어로 쓰면? _____`;
+  // 단어 굴절형 목록 생성 (3인칭/과거/진행/복수 등)
+  function inflections(w: string): string[] {
+    const v: string[] = [w];
+    if (w.endsWith('e')) {
+      v.push(w + 'd', w + 's', w.slice(0, -1) + 'ing', w.slice(0, -1) + 'ed');
+    } else if (w.endsWith('y') && w.length > 2 && !'aeiou'.includes(w[w.length - 2])) {
+      v.push(w + 'ing', w.slice(0, -1) + 'ies', w.slice(0, -1) + 'ied');
+    } else {
+      v.push(w + 's', w + 'ed', w + 'ing');
+      const last = w[w.length - 1];
+      if ('bdgmnprt'.includes(last) && !'aeiou'.includes(w[w.length - 2])) {
+        v.push(w + last + 'ed', w + last + 'ing');
+      }
+    }
+    return [...new Set(v)];
+  }
+
+  // phrasal verb는 첫 동사만 굴절
+  function candidates(phrase: string): string[] {
+    const parts = phrase.split(' ');
+    if (parts.length === 1) return inflections(phrase);
+    const rest = ' ' + parts.slice(1).join(' ');
+    return inflections(parts[0]).map((f) => f + rest);
+  }
+
+  // 정확 일치 우선, 그 다음 굴절형 시도
+  const exact = tryReplace(baseWord) ?? (baseWord !== word ? tryReplace(word) : null);
+  if (exact) return exact;
+
+  for (const variant of candidates(baseWord)) {
+    const r = tryReplace(variant);
+    if (r) return r;
+  }
+
+  return `${hint}를 영어로 쓰면? _____`;
 }
 
 /** FNV-32a non-cryptographic hash (Edge Function과 동일 구현, seed 생성용) */
