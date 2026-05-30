@@ -19,19 +19,64 @@ interface Question {
   answer: string;  // 정답 텍스트
 }
 
-// MVP용 하드코딩 문제풀 (운영 시 콘텐츠 repo로 이동)
-const POOL: Question[] = [
-  { type: 'blank', prompt: 'I _____ to work every day.', options: ['go', 'goes', 'going', 'went'], answer: 'go' },
-  { type: 'phrasal', prompt: '"look up to someone"의 의미는?', options: ['존경하다', '찾아보다', '쳐다보다', '포기하다'], answer: '존경하다' },
-  { type: 'synonym', prompt: '"important"와 가장 가까운 단어는?', options: ['crucial', 'simple', 'easy', 'random'], answer: 'crucial' },
-  { type: 'pronunciation', prompt: '다음 중 "schedule"의 미국식 발음과 가까운 것?', options: ['스케줄', '셰줄', '스케쥬얼', '스케쥴'], answer: '스케줄' },
-  { type: 'situation', prompt: '회의 시작 시 동료에게 인사할 때 가장 자연스러운 표현?', options: ['Good morning, everyone', 'Hey what\'s up', 'Hi friend', 'Hello dear'], answer: 'Good morning, everyone' },
-];
+// 카테고리별 문제풀 — 매 테스트마다 각 카테고리에서 1개씩 랜덤 선택
+const POOL_BY_TYPE: Record<QuestionType, Question[]> = {
+  blank: [
+    { type: 'blank', prompt: 'I _____ to work every day.', options: ['go', 'goes', 'going', 'went'], answer: 'go' },
+    { type: 'blank', prompt: 'She _____ happy when she heard the news.', options: ['is', 'was', 'were', 'be'], answer: 'was' },
+    { type: 'blank', prompt: 'He _____ been working here for five years.', options: ['have', 'had', 'has', 'is'], answer: 'has' },
+    { type: 'blank', prompt: 'They decided _____ the meeting until Friday.', options: ['postpone', 'postponing', 'to postpone', 'postponed'], answer: 'to postpone' },
+    { type: 'blank', prompt: 'By the time we arrived, the film _____ already started.', options: ['has', 'had', 'have', 'was'], answer: 'had' },
+  ],
+  phrasal: [
+    { type: 'phrasal', prompt: '"look up to someone"의 의미는?', options: ['존경하다', '찾아보다', '쳐다보다', '포기하다'], answer: '존경하다' },
+    { type: 'phrasal', prompt: '"put off"의 의미는?', options: ['미루다', '끄다', '내려놓다', '포기하다'], answer: '미루다' },
+    { type: 'phrasal', prompt: '"bring up"의 의미는?', options: ['언급하다', '가져오다', '올리다', '키우다'], answer: '언급하다' },
+    { type: 'phrasal', prompt: '"run into someone"의 의미는?', options: ['충돌하다', '우연히 만나다', '빠르게 달리다', '피하다'], answer: '우연히 만나다' },
+    { type: 'phrasal', prompt: '"give in"의 의미는?', options: ['제출하다', '굴복하다', '포기하다', '들어가다'], answer: '굴복하다' },
+  ],
+  synonym: [
+    { type: 'synonym', prompt: '"important"와 가장 가까운 단어는?', options: ['crucial', 'simple', 'easy', 'random'], answer: 'crucial' },
+    { type: 'synonym', prompt: '"show"와 가장 가까운 단어는?', options: ['hide', 'demonstrate', 'ignore', 'avoid'], answer: 'demonstrate' },
+    { type: 'synonym', prompt: '"difficult"과 가장 가까운 단어는?', options: ['simple', 'quick', 'challenging', 'bright'], answer: 'challenging' },
+    { type: 'synonym', prompt: '"end"와 가장 가까운 단어는?', options: ['begin', 'proceed', 'conclude', 'extend'], answer: 'conclude' },
+    { type: 'synonym', prompt: '"help"와 가장 가까운 단어는?', options: ['hinder', 'assist', 'ignore', 'delay'], answer: 'assist' },
+  ],
+  pronunciation: [
+    { type: 'pronunciation', prompt: '다음 중 "schedule"의 미국식 발음과 가까운 것?', options: ['스케줄', '셰줄', '스케쥬얼', '스케쥴'], answer: '스케줄' },
+    { type: 'pronunciation', prompt: '"colonel"의 올바른 발음은?', options: ['콜로넬', '커널', '콜로넬', '코로넬'], answer: '커널' },
+    { type: 'pronunciation', prompt: '"Wednesday"의 올바른 발음은?', options: ['웨드네스데이', '웬즈데이', '웨드즈데이', '웬드네이'], answer: '웬즈데이' },
+    { type: 'pronunciation', prompt: '"debt"에서 묵음인 글자는?', options: ['d', 'e', 'b', 't'], answer: 'b' },
+    { type: 'pronunciation', prompt: '"island"에서 묵음인 글자는?', options: ['i', 'l', 's', 'a'], answer: 's' },
+  ],
+  situation: [
+    { type: 'situation', prompt: '회의 시작 시 동료에게 인사할 때 가장 자연스러운 표현?', options: ['Good morning, everyone', "Hey what's up", 'Hi friend', 'Hello dear'], answer: 'Good morning, everyone' },
+    { type: 'situation', prompt: '처음 만난 사람에게 하는 가장 자연스러운 인사?', options: ['How are you doing?', 'Nice to meet you', 'Long time no see', 'What do you want?'], answer: 'Nice to meet you' },
+    { type: 'situation', prompt: '이메일 마무리에 쓰는 가장 격식 있는 표현?', options: ['See ya', 'Bye bye', 'Best regards', 'Take care dude'], answer: 'Best regards' },
+    { type: 'situation', prompt: '상대방 의견에 부드럽게 반대할 때 자연스러운 표현?', options: ['You are wrong', 'I disagree totally', 'I see your point, but...', 'No way'], answer: 'I see your point, but...' },
+    { type: 'situation', prompt: '전화로 본인임을 밝힐 때 가장 자연스러운 표현?', options: ['It is I', 'Speaking', 'Yes, me', 'That is me'], answer: 'Speaking' },
+  ],
+};
+
+function pickQuestions(): Question[] {
+  const types: QuestionType[] = ['blank', 'phrasal', 'synonym', 'pronunciation', 'situation'];
+  const picked = types.map((t) => {
+    const pool = POOL_BY_TYPE[t];
+    return pool[Math.floor(Math.random() * pool.length)];
+  });
+  // 문항 순서도 섞기
+  for (let i = picked.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [picked[i], picked[j]] = [picked[j], picked[i]];
+  }
+  return picked;
+}
 
 const LEVEL_MAP = ['A1', 'A1', 'A2', 'B1', 'B2', 'C1'] as const;
 
 export default function LevelTestPage() {
   const router = useRouter();
+  const [questions] = useState<Question[]>(() => pickQuestions());
   const [step, setStep] = useState<'intro' | 'quiz' | 'done'>('intro');
   const [idx, setIdx] = useState(0);
   const [score, setScore] = useState(0);
@@ -55,10 +100,10 @@ export default function LevelTestPage() {
   }, [step]);
 
   function selectAnswer(option: string) {
-    const correct = option === POOL[idx].answer;
+    const correct = option === questions[idx].answer;
     const newScore = score + (correct ? 1 : 0);
     setScore(newScore);
-    if (idx + 1 >= POOL.length) {
+    if (idx + 1 >= questions.length) {
       setStep('done');
     } else {
       setIdx(idx + 1);
@@ -117,7 +162,7 @@ export default function LevelTestPage() {
       <div className="space-y-6 py-12 text-center">
         <h1 className="text-2xl font-bold">결과</h1>
         <p className="text-5xl font-bold text-brand">{level}</p>
-        <p className="text-gray-700">{score} / {POOL.length} 정답</p>
+        <p className="text-gray-700">{score} / {questions.length} 정답</p>
         <p className="text-sm text-gray-500">
           {level === 'A1' && '기초 — 천천히 시작해요'}
           {level === 'A2' && '초중급 — 일상 표현부터'}
@@ -138,11 +183,11 @@ export default function LevelTestPage() {
   }
 
   // step === 'quiz'
-  const q = POOL[idx];
+  const q = questions[idx];
   return (
     <div className="space-y-6 py-8">
       <div className="flex justify-between text-sm text-gray-500">
-        <span>{idx + 1} / {POOL.length}</span>
+        <span>{idx + 1} / {questions.length}</span>
         <span className={remaining <= 10 ? 'text-red-600 font-bold' : ''}>{remaining}초</span>
       </div>
       <h2 className="text-xl font-medium">{q.prompt}</h2>
